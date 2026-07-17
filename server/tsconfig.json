@@ -1,0 +1,9 @@
+{
+    "compilerOptions": {
+        "types": [
+            "node"
+        ],
+        "strict": true,
+        "forceConsistentCasingInFileNames": true
+    }
+}
