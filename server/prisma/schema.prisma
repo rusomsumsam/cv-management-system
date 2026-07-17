@@ -26,6 +26,7 @@ model User {
   projects       Project[]
   positions      Position[]
   userAttributes UserAttribute[]
+  cvs            CV[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -64,6 +65,7 @@ model Position {
   user   User   @relation(fields: [userId], references: [id])
 
   positionAttributes PositionAttribute[]
+  cvs                CV[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -91,4 +93,24 @@ model PositionAttribute {
   attribute Attribute @relation(fields: [attributeId], references: [id])
 
   createdAt DateTime @default(now())
+}
+
+enum CVStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model CV {
+  id String @id @default(cuid())
+
+  userId     String
+  positionId String
+
+  status CVStatus @default(DRAFT)
+
+  user     User     @relation(fields: [userId], references: [id])
+  position Position @relation(fields: [positionId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

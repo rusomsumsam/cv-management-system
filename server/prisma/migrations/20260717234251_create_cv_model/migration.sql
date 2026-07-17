@@ -1,0 +1,20 @@
+-- CreateEnum
+CREATE TYPE "CVStatus" AS ENUM ('DRAFT', 'PUBLISHED');
+
+-- CreateTable
+CREATE TABLE "CV" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "positionId" TEXT NOT NULL,
+    "status" "CVStatus" NOT NULL DEFAULT 'DRAFT',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "CV_pkey" PRIMARY KEY ("id")
+);
+
+-- AddForeignKey
+ALTER TABLE "CV" ADD CONSTRAINT "CV_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CV" ADD CONSTRAINT "CV_positionId_fkey" FOREIGN KEY ("positionId") REFERENCES "Position"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
