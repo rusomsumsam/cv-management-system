@@ -23,7 +23,8 @@ model User {
   location     String?
   role         Role    @default(CANDIDATE)
 
-  projects Project[]
+  projects  Project[]
+  positions Position[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -45,6 +46,18 @@ model Attribute {
   id   String @id @default(cuid())
   name String
   type String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Position {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
