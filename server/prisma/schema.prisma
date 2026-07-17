@@ -48,7 +48,8 @@ model Attribute {
   name String
   type String
 
-  userAttributes UserAttribute[]
+  userAttributes     UserAttribute[]
+  positionAttributes PositionAttribute[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -62,6 +63,8 @@ model Position {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
+  positionAttributes PositionAttribute[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -73,6 +76,18 @@ model UserAttribute {
   attributeId String
 
   user      User      @relation(fields: [userId], references: [id])
+  attribute Attribute @relation(fields: [attributeId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model PositionAttribute {
+  id String @id @default(cuid())
+
+  positionId  String
+  attributeId String
+
+  position  Position  @relation(fields: [positionId], references: [id])
   attribute Attribute @relation(fields: [attributeId], references: [id])
 
   createdAt DateTime @default(now())
