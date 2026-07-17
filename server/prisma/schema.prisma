@@ -28,6 +28,7 @@ model User {
   userAttributes UserAttribute[]
   cvs            CV[]
   discussions    Discussion[]
+  likes          Like[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -113,6 +114,8 @@ model CV {
   user     User     @relation(fields: [userId], references: [id])
   position Position @relation(fields: [positionId], references: [id])
 
+  likes Like[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -130,4 +133,18 @@ model Discussion {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Like {
+  id String @id @default(cuid())
+
+  userId String
+  cvId   String
+
+  user User @relation(fields: [userId], references: [id])
+  cv   CV   @relation(fields: [cvId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, cvId])
 }
