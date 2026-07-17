@@ -27,6 +27,7 @@ model User {
   positions      Position[]
   userAttributes UserAttribute[]
   cvs            CV[]
+  discussions    Discussion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -66,6 +67,7 @@ model Position {
 
   positionAttributes PositionAttribute[]
   cvs                CV[]
+  discussions        Discussion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -107,6 +109,21 @@ model CV {
   positionId String
 
   status CVStatus @default(DRAFT)
+
+  user     User     @relation(fields: [userId], references: [id])
+  position Position @relation(fields: [positionId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Discussion {
+  id String @id @default(cuid())
+
+  content String
+
+  userId     String
+  positionId String
 
   user     User     @relation(fields: [userId], references: [id])
   position Position @relation(fields: [positionId], references: [id])
