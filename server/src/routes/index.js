@@ -1,5 +1,7 @@
 const router = require("express").Router();
 
+const authRoutes = require("./auth.route");
+
 router.get("/", (req, res) => {
     res.send("CV Management System API Running");
 });
@@ -10,5 +12,7 @@ router.get("/health", (req, res) => {
         message: "Server is healthy",
     });
 });
+
+router.use("/auth", authRoutes);
 
 module.exports = router;
