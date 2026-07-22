@@ -6,15 +6,15 @@ const app = express();
 
 const routes = require("./routes");
 
-app.use(
-    cors({
-        origin: [
-            "http://localhost:5173",
-            "https://your-frontend.vercel.app",
-        ],
-        credentials: true,
-    })
-);
+app.use(cors({
+    origin: [
+        "http://localhost:5173",
+        process.env.FRONTEND_URL,
+    ],
+    credentials: true,
+}));
+
+app.options("*", cors());
 
 app.use(express.json());
 app.use(cookieParser());
