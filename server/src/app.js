@@ -6,15 +6,17 @@ const app = express();
 
 const routes = require("./routes");
 
-app.use(cors({
-    origin: [
-        "http://localhost:5173",
-        process.env.FRONTEND_URL,
-    ],
-    credentials: true,
-}));
 
-app.options("*", cors());
+app.use(
+    cors({
+        origin: [
+            "http://localhost:5173",
+            "https://cv-management-system-orpin.vercel.app",
+        ],
+        credentials: true,
+    })
+);
+
 
 app.use(express.json());
 app.use(cookieParser());
