@@ -4,7 +4,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 const registerUser = async (req, res) => {
-    const { firstName, lastName, email, password } = req.body;
+    const { firstName, lastName, email, password, role } = req.body;
 
     const existingUser = await prisma.user.findUnique({
         where: {
@@ -27,6 +27,7 @@ const registerUser = async (req, res) => {
             lastName,
             email,
             password: hashedPassword,
+            role: role || "CANDIDATE", // Default role if not provided
         },
     });
 
@@ -42,10 +43,16 @@ const registerUser = async (req, res) => {
         }
     );
 
+    res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // localhost
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     return res.status(201).json({
         success: true,
         message: "User registered successfully",
-        token,
         data: {
             id: user.id,
             firstName: user.firstName,
@@ -97,10 +104,16 @@ const loginUser = async (req, res) => {
         }
     );
 
+    res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // localhost
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     return res.status(200).json({
         success: true,
         message: "Login successful",
-        token,
         data: {
             id: user.id,
             firstName: user.firstName,
@@ -118,6 +131,13 @@ const getCurrentUser = async (req, res) => {
         },
     });
 
+    if (!user) {
+        return res.status(404).json({
+            success: false,
+            message: "User not found",
+        });
+    }
+
     return res.status(200).json({
         success: true,
         data: {
@@ -134,8 +154,18 @@ const getCurrentUser = async (req, res) => {
     });
 };
 
+const logoutUser = (req, res) => {
+    res.clearCookie("token");
+
+    return res.status(200).json({
+        success: true,
+        message: "Logged out successfully",
+    });
+};
+
 module.exports = {
     registerUser,
     loginUser,
-    getCurrentUser
+    getCurrentUser,
+    logoutUser
 };
