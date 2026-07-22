@@ -60,11 +60,14 @@ model Attribute {
 
 model Position {
   id          String  @id @default(cuid())
+
   title       String
   description String?
 
+  isActive    Boolean @default(true)
+
   userId String
-  user   User   @relation(fields: [userId], references: [id])
+  user   User @relation(fields: [userId], references: [id])
 
   positionAttributes PositionAttribute[]
   cvs                CV[]
@@ -73,6 +76,7 @@ model Position {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
 
 model UserAttribute {
   id String @id @default(cuid())
@@ -109,7 +113,8 @@ model CV {
   userId     String
   positionId String
 
-  status CVStatus @default(DRAFT)
+  status  CVStatus @default(DRAFT)
+  content String?
 
   user     User     @relation(fields: [userId], references: [id])
   position Position @relation(fields: [positionId], references: [id])
