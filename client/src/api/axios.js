@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-    baseURL: "https://cv-management-system-gqwa.onrender.com/api",
+    baseURL: import.meta.env.VITE_API_URL,
     withCredentials: true,
 });
 
