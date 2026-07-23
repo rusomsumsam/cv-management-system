@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Search,
@@ -8,90 +8,50 @@ import {
     Upload,
     Trash2,
     CheckCircle,
-    Clock,
     AlertCircle
 } from 'lucide-react';
+import api from "../api/axios";
 
 const Positions = () => {
     const navigate = useNavigate();
 
-    const [positions, setPositions] = useState([
-        {
-            id: 1,
-            title: 'Senior Frontend Developer',
-            department: 'Engineering',
-            deadline: '2026-08-15',
-            status: 'Active'
-        },
-        {
-            id: 2,
-            title: 'Product Manager',
-            department: 'Product',
-            deadline: '2026-07-30',
-            status: 'Active'
-        },
-        {
-            id: 3,
-            title: 'UX Designer',
-            department: 'Design',
-            deadline: '2026-08-01',
-            status: 'Reviewing'
-        },
-        {
-            id: 4,
-            title: 'DevOps Engineer',
-            department: 'Infrastructure',
-            deadline: '2026-08-20',
-            status: 'Active'
-        },
-        {
-            id: 5,
-            title: 'Data Analyst',
-            department: 'Data Science',
-            deadline: '2026-09-01',
-            status: 'Draft'
-        },
-        {
-            id: 6,
-            title: 'Backend Engineer',
-            department: 'Engineering',
-            deadline: '2026-08-10',
-            status: 'Active'
-        }
-    ]);
-
+    const [positions, setPositions] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [departmentFilter, setDepartmentFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
 
     const departments = ['all', 'Engineering', 'Product', 'Design', 'Infrastructure', 'Data Science'];
-    const statuses = ['all', 'Active', 'Reviewing', 'Draft'];
+    const statuses = ['all', 'Active', 'Inactive'];
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'Active':
-                return 'bg-emerald-50 text-emerald-700';
-            case 'Reviewing':
-                return 'bg-amber-50 text-amber-700';
-            case 'Draft':
-                return 'bg-slate-50 text-slate-700';
-            default:
-                return 'bg-slate-50 text-slate-700';
-        }
+    useEffect(() => {
+        const fetchPositions = async () => {
+            try {
+                const response = await api.get("/positions");
+                setPositions(response.data.data);
+            } catch (error) {
+                console.error("Error fetching positions:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPositions();
+    }, []);
+
+    const getStatusColor = (isActive) => {
+        return isActive
+            ? 'bg-emerald-50 text-emerald-700'
+            : 'bg-slate-50 text-slate-700';
     };
 
-    const getStatusIcon = (status) => {
-        switch (status) {
-            case 'Active':
-                return CheckCircle;
-            case 'Reviewing':
-                return Clock;
-            case 'Draft':
-                return AlertCircle;
-            default:
-                return CheckCircle;
-        }
+    const getStatusIcon = (isActive) => {
+        return isActive ? CheckCircle : AlertCircle;
+    };
+
+    const getStatusLabel = (isActive) => {
+        return isActive ? 'Active' : 'Inactive';
     };
 
     const handleSelectAll = (e) => {
@@ -111,12 +71,26 @@ const Positions = () => {
     };
 
     const filteredPositions = positions.filter(position => {
+        const fullName = `${position.user.firstName} ${position.user.lastName}`;
         const matchesSearch = position.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            position.department.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesDepartment = departmentFilter === 'all' || position.department === departmentFilter;
-        const matchesStatus = statusFilter === 'all' || position.status === statusFilter;
+            fullName.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesDepartment = departmentFilter === 'all' || fullName.includes(departmentFilter);
+        const statusLabel = getStatusLabel(position.isActive);
+        const matchesStatus = statusFilter === 'all' || statusLabel === statusFilter;
         return matchesSearch && matchesDepartment && matchesStatus;
     });
+
+    if (loading) {
+        return (
+            <div className="bg-slate-50 p-6">
+                <div className="max-w-7xl mx-auto space-y-6">
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <p className="text-slate-600">Loading positions...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="bg-slate-50 p-6">
@@ -149,7 +123,7 @@ const Positions = () => {
                                 >
                                     {departments.map(dept => (
                                         <option key={dept} value={dept}>
-                                            {dept === 'all' ? 'All Departments' : dept}
+                                            {dept === 'all' ? 'All Users' : dept}
                                         </option>
                                     ))}
                                 </select>
@@ -223,14 +197,18 @@ const Positions = () => {
                                         />
                                     </th>
                                     <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Position</th>
-                                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Department</th>
-                                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Deadline</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">User</th>
+                                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Created</th>
                                     <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredPositions.map((position) => {
-                                    const StatusIcon = getStatusIcon(position.status);
+                                    const StatusIcon = getStatusIcon(position.isActive);
+                                    const statusLabel = getStatusLabel(position.isActive);
+                                    const fullName = `${position.user.firstName} ${position.user.lastName}`;
+                                    const createdDate = new Date(position.createdAt).toLocaleDateString();
+
                                     return (
                                         <tr
                                             key={position.id}
@@ -243,15 +221,16 @@ const Positions = () => {
                                                     checked={selectedIds.includes(position.id)}
                                                     onChange={() => handleSelectOne(position.id)}
                                                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                                                    onClick={(e) => e.stopPropagation()}
                                                 />
                                             </td>
                                             <td className="py-3 px-4 text-sm text-slate-900 font-medium">{position.title}</td>
-                                            <td className="py-3 px-4 text-sm text-slate-600">{position.department}</td>
-                                            <td className="py-3 px-4 text-sm text-slate-600">{position.deadline}</td>
+                                            <td className="py-3 px-4 text-sm text-slate-600">{fullName}</td>
+                                            <td className="py-3 px-4 text-sm text-slate-600">{createdDate}</td>
                                             <td className="py-3 px-4">
-                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(position.status)}`}>
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(position.isActive)}`}>
                                                     <StatusIcon className="h-3 w-3" />
-                                                    {position.status}
+                                                    {statusLabel}
                                                 </span>
                                             </td>
                                         </tr>

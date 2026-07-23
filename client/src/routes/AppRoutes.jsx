@@ -8,13 +8,16 @@ import Login from "../pages/Login";
 import Register from "../pages/Register";
 
 import Dashboard from "../pages/Dashboard";
-import Positions from "../pages/Positions";
 import Profile from "../pages/Profile";
 import CVs from "../pages/CVs";
 import Projects from "../pages/Projects";
 import Discussions from "../pages/Discussions";
-import PositionDetails from "../pages/PositionDetails";
 import ProtectedRoute from "./ProtectedRoute";
+import CreatePosition from "../pages/recruiter/positions/CreatePosition";
+import RecruiterPositionDetails from "../pages/recruiter/positions/RecruiterPositionDetails";
+import RecruiterPositions from "../pages/recruiter/positions/RecruiterPositions";
+import EditPosition from "../pages/recruiter/positions/EditPosition";
+
 
 const AppRoutes = () => {
     return (
@@ -36,8 +39,25 @@ const AppRoutes = () => {
                 }
             >
                 <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/positions" element={<Positions />} />
-                <Route path="/positions/:id" element={<PositionDetails />} />
+                <Route
+                    path="/positions"
+                    element={<RecruiterPositions />}
+                />
+
+                <Route
+                    path="/positions/create"
+                    element={<CreatePosition />}
+                />
+
+                <Route
+                    path="/positions/:id"
+                    element={<RecruiterPositionDetails />}
+                />
+
+                <Route
+                    path="/positions/edit/:id"
+                    element={<EditPosition />}
+                />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/my-cvs" element={<CVs />} />
                 <Route path="/projects" element={<Projects />} />

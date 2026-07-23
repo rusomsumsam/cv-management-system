@@ -59,10 +59,15 @@ model Attribute {
 }
 
 model Position {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
 
   title       String
   description String?
+
+  company     String?
+  location    String?
+  department  String?
+  deadline    DateTime?
 
   isActive    Boolean @default(true)
 
