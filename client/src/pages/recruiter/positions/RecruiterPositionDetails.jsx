@@ -50,7 +50,7 @@ const RecruiterPositionDetails = () => {
             await api.delete(`/positions/${id}`);
             navigate("/positions");
         } catch (err) {
-            alert("Failed to delete position");
+            alert(err,"Failed to delete position");
         }
     };
 
@@ -120,6 +120,13 @@ const RecruiterPositionDetails = () => {
                             >
                                 <Pencil className="h-4 w-4" />
                                 Edit Position
+                            </button>
+                            <button
+                                onClick={() => navigate(`/positions/${id}/attributes`)}
+                                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors"
+                            >
+                                <Tag className="h-4 w-4" />
+                                Manage Attributes
                             </button>
                             <button
                                 onClick={handleDelete}

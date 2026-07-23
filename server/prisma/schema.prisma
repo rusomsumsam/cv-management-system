@@ -46,10 +46,25 @@ model Project {
   updatedAt DateTime @updatedAt
 }
 
+enum AttributeType {
+  STRING
+  TEXT
+  IMAGE
+  NUMERIC
+  DATE
+  PERIOD
+  BOOLEAN
+  DROPDOWN
+}
+
 model Attribute {
-  id   String @id @default(cuid())
-  name String
-  type String
+  id String @id @default(cuid())
+
+  name String @unique
+
+  category String
+
+  type AttributeType
 
   userAttributes     UserAttribute[]
   positionAttributes PositionAttribute[]
@@ -89,10 +104,15 @@ model UserAttribute {
   userId      String
   attributeId String
 
+  value String?
+
   user      User      @relation(fields: [userId], references: [id])
   attribute Attribute @relation(fields: [attributeId], references: [id])
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, attributeId])
 }
 
 model PositionAttribute {
@@ -115,11 +135,20 @@ enum CVStatus {
 model CV {
   id String @id @default(cuid())
 
+  fullName  String
+  email     String
+  phone     String?
+
+  summary    String?
+  skills     String?
+  education  String?
+  experience String?
+  projects   String?
+
+  status CVStatus @default(DRAFT)
+
   userId     String
   positionId String
-
-  status  CVStatus @default(DRAFT)
-  content String?
 
   user     User     @relation(fields: [userId], references: [id])
   position Position @relation(fields: [positionId], references: [id])

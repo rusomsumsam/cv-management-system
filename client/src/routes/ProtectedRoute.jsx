@@ -1,32 +1,58 @@
-import { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
-import api from "../api/axios";
+import { Navigate, useLocation } from "react-router-dom";
+import useAuth from "../hooks/useAuth";
 
-const ProtectedRoute = ({ children }) => {
-    const [loading, setLoading] = useState(true);
-    const [authenticated, setAuthenticated] = useState(false);
-
-    useEffect(() => {
-        const checkAuth = async () => {
-            try {
-                await api.get("/auth/me");
-                setAuthenticated(true);
-            } catch {
-                setAuthenticated(false);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        checkAuth();
-    }, []);
+const ProtectedRoute = ({
+    children,
+    allowedRoles,
+}) => {
+    const { user, loading, isAuthenticated } = useAuth();
+    const location = useLocation();
 
     if (loading) {
-        return <div>Loading...</div>;
+        return (
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-r-transparent mb-4"></div>
+                    <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">
+                        Checking authentication...
+                    </p>
+                </div>
+            </div>
+        );
     }
 
-    if (!authenticated) {
-        return <Navigate to="/login" replace />;
+    if (!isAuthenticated) {
+        return (
+            <Navigate
+                to="/login"
+                replace
+                state={{ from: location }}
+            />
+        );
+    }
+
+    // If no role restrictions, allow access
+    if (!allowedRoles || allowedRoles.length === 0) {
+        return children;
+    }
+
+    const userRole = user?.role?.toUpperCase() || "";
+    const normalizedAllowedRoles = allowedRoles.map((role) =>
+        role.toUpperCase()
+    );
+
+    // ADMIN always has access to all routes
+    const hasRequiredRole =
+        userRole === "ADMIN" ||
+        normalizedAllowedRoles.includes(userRole);
+
+    if (!hasRequiredRole) {
+        return (
+            <Navigate
+                to="/dashboard"
+                replace
+            />
+        );
     }
 
     return children;
