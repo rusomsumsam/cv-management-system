@@ -17,6 +17,8 @@ import CreatePosition from "../pages/recruiter/positions/CreatePosition";
 import RecruiterPositionDetails from "../pages/recruiter/positions/RecruiterPositionDetails";
 import RecruiterPositions from "../pages/recruiter/positions/RecruiterPositions";
 import EditPosition from "../pages/recruiter/positions/EditPosition";
+import CandidatePositions from "../pages/candidate/positions/CandidatePositions";
+import CandidatePositionDetails from "../pages/candidate/positions/CandidatePositionDetails";
 
 
 const AppRoutes = () => {
@@ -58,6 +60,17 @@ const AppRoutes = () => {
                     path="/positions/edit/:id"
                     element={<EditPosition />}
                 />
+
+                <Route
+                    path="/candidate/positions"
+                    element={<CandidatePositions />}
+                />
+
+                <Route
+                    path="/candidate/positions/:id"
+                    element={<CandidatePositionDetails />}
+                />
+
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/my-cvs" element={<CVs />} />
                 <Route path="/projects" element={<Projects />} />
