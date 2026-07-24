@@ -11,13 +11,7 @@ const {
 const authMiddleware = require("../middlewares/auth.middleware");
 const authorizeRoles = require("../middlewares/authorize.middleware");
 
-router.post(
-    "/",
-    authMiddleware,
-    authorizeRoles("RECRUITER", "ADMIN"),
-    createAttribute
-);
-
+// All authenticated users (Candidates, Recruiters, Admins) can read the Attribute Library
 router.get(
     "/",
     authMiddleware,
@@ -28,6 +22,14 @@ router.get(
     "/:id",
     authMiddleware,
     getAttributeById
+);
+
+// Only Recruiters and Admins can mutate the Attribute Library
+router.post(
+    "/",
+    authMiddleware,
+    authorizeRoles("RECRUITER", "ADMIN"),
+    createAttribute
 );
 
 router.patch(
