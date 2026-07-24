@@ -122,6 +122,11 @@ const Sidebar = ({
                 icon: BriefcaseBusiness,
             },
             {
+                label: "Published CVs",
+                path: "/recruiter/cvs",
+                icon: FileText,
+            },
+            {
                 label: "Attribute Library",
                 path: "/attributes",
                 icon: ListChecks,

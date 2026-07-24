@@ -96,123 +96,164 @@ class CVRequestError extends Error {
 }
 
 /**
- * Shared selection for CV list items
+ * Dynamic selection for CV list items
  */
-const cvListSelect = {
-    id: true,
-    fullName: true,
-    email: true,
-    phone: true,
-    summary: true,
-    skills: true,
-    education: true,
-    experience: true,
-    projects: true,
-    status: true,
-    userId: true,
-    positionId: true,
-    createdAt: true,
-    updatedAt: true,
-    position: {
-        select: {
-            id: true,
-            title: true,
-            company: true,
-            location: true,
-            department: true,
-            isActive: true,
+const getCVListSelect = (role, currentUserId) => {
+    const select = {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        summary: true,
+        skills: true,
+        education: true,
+        experience: true,
+        projects: true,
+        status: true,
+        userId: true,
+        positionId: true,
+        createdAt: true,
+        updatedAt: true,
+        position: {
+            select: {
+                id: true,
+                title: true,
+                company: true,
+                location: true,
+                department: true,
+                isActive: true,
+            },
         },
-    },
-    user: {
-        select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            profilePhoto: true,
+        user: {
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                profilePhoto: true,
+            },
         },
-    },
-    _count: {
-        select: {
-            likes: true,
+        _count: {
+            select: {
+                likes: true,
+            },
         },
-    },
+    };
+
+    if (role === "RECRUITER" && currentUserId) {
+        select.likes = {
+            where: {
+                userId: currentUserId,
+            },
+            select: {
+                id: true,
+            },
+            take: 1,
+        };
+    }
+
+    return select;
 };
 
 /**
- * Shared selection for CV details (without positionAttributes)
+ * Dynamic selection for CV details (without positionAttributes)
  */
-const cvDetailSelect = {
-    id: true,
-    fullName: true,
-    email: true,
-    phone: true,
-    summary: true,
-    skills: true,
-    education: true,
-    experience: true,
-    projects: true,
-    status: true,
-    userId: true,
-    positionId: true,
-    createdAt: true,
-    updatedAt: true,
-    position: {
-        select: {
-            id: true,
-            title: true,
-            description: true,
-            company: true,
-            location: true,
-            department: true,
-            deadline: true,
-            isActive: true,
+const getCVDetailSelect = (role, currentUserId) => {
+    const select = {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        summary: true,
+        skills: true,
+        education: true,
+        experience: true,
+        projects: true,
+        status: true,
+        userId: true,
+        positionId: true,
+        createdAt: true,
+        updatedAt: true,
+        position: {
+            select: {
+                id: true,
+                title: true,
+                description: true,
+                company: true,
+                location: true,
+                department: true,
+                deadline: true,
+                isActive: true,
+            },
         },
-    },
-    user: {
-        select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            profilePhoto: true,
-            location: true,
+        user: {
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                profilePhoto: true,
+                location: true,
+            },
         },
-    },
-    _count: {
-        select: {
-            likes: true,
+        _count: {
+            select: {
+                likes: true,
+            },
         },
-    },
+    };
+
+    if (role === "RECRUITER" && currentUserId) {
+        select.likes = {
+            where: {
+                userId: currentUserId,
+            },
+            select: {
+                id: true,
+            },
+            take: 1,
+        };
+    }
+
+    return select;
 };
 
 /**
- * Expanded selection for CV details with PositionAttributes
+ * Dynamic selection for CV details with PositionAttributes
  */
-const cvDetailWithPositionAttributesSelect = {
-    ...cvDetailSelect,
-    position: {
-        select: {
-            ...cvDetailSelect.position.select,
-            positionAttributes: {
-                select: {
-                    id: true,
-                    attributeId: true,
-                    attribute: {
-                        select: {
-                            id: true,
-                            name: true,
-                            category: true,
-                            type: true,
+const getCVDetailWithPositionAttributesSelect = (role, currentUserId) => {
+    const detailSelect = getCVDetailSelect(role, currentUserId);
+
+    return {
+        ...detailSelect,
+        position: {
+            select: {
+                ...detailSelect.position.select,
+                positionAttributes: {
+                    select: {
+                        id: true,
+                        attributeId: true,
+                        attribute: {
+                            select: {
+                                id: true,
+                                name: true,
+                                category: true,
+                                type: true,
+                            },
                         },
                     },
-                },
-                orderBy: {
-                    createdAt: "asc",
+                    orderBy: {
+                        createdAt: "asc",
+                    },
                 },
             },
         },
-    },
+    };
 };
+
+/**
+ * Static mutation selection (without recruiter like state)
+ */
+const cvMutationSelect = getCVDetailSelect("", "");
 
 /**
  * Create a new CV
@@ -420,7 +461,7 @@ const createCV = async (req, res) => {
                     positionId: normalizedPositionId,
                     status: "DRAFT",
                 },
-                select: cvDetailSelect,
+                select: cvMutationSelect,
             });
 
             return createdCV;
@@ -495,16 +536,30 @@ const getCVs = async (req, res) => {
     try {
         const cvs = await prisma.cV.findMany({
             where,
-            select: cvListSelect,
+            select: getCVListSelect(role, req.user.id),
             orderBy: [
                 { updatedAt: "desc" },
                 { createdAt: "desc" },
             ],
         });
 
+        // Transform response to include likedByCurrentUser for Recruiters
+        const responseCVs = cvs.map((cv) => {
+            if (role !== "RECRUITER") {
+                return cv;
+            }
+
+            const { likes, ...cleanCV } = cv;
+
+            return {
+                ...cleanCV,
+                likedByCurrentUser: Array.isArray(likes) && likes.length > 0,
+            };
+        });
+
         return res.status(200).json({
             success: true,
-            data: cvs,
+            data: responseCVs,
         });
     } catch (error) {
         return handleServerError(res, "load", error);
@@ -563,7 +618,7 @@ const getCVById = async (req, res) => {
 
         const cv = await prisma.cV.findFirst({
             where,
-            select: cvDetailWithPositionAttributesSelect,
+            select: getCVDetailWithPositionAttributesSelect(role, req.user.id),
         });
 
         if (!cv) {
@@ -642,11 +697,21 @@ const getCVById = async (req, res) => {
 
         const { positionAttributes, ...cleanPosition } = cv.position;
 
+        // Extract temporary likes array for Recruiters and clean it from the response
+        const { likes: currentUserLikes, ...cvWithoutCurrentUserLikes } = cv;
+
         const responseData = {
-            ...cv,
+            ...cvWithoutCurrentUserLikes,
             position: cleanPosition,
             attributes: dynamicAttributes,
             profileProjects,
+            ...(role === "RECRUITER"
+                ? {
+                    likedByCurrentUser:
+                        Array.isArray(currentUserLikes) &&
+                        currentUserLikes.length > 0,
+                }
+                : {}),
         };
 
         return res.status(200).json({
@@ -927,7 +992,7 @@ const updateCV = async (req, res) => {
                         const updated = await tx.cV.update({
                             where: { id: txCV.id },
                             data: finalUpdateData,
-                            select: cvDetailSelect,
+                            select: cvMutationSelect,
                         });
 
                         return updated;
@@ -964,7 +1029,7 @@ const updateCV = async (req, res) => {
         const updatedCV = await prisma.cV.update({
             where: { id: existingCV.id },
             data: updateData,
-            select: cvDetailSelect,
+            select: cvMutationSelect,
         });
 
         return res.status(200).json({

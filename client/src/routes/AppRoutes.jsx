@@ -21,6 +21,11 @@ import EditPosition from "../pages/recruiter/positions/EditPosition";
 // Recruiter - Profile
 import RecruiterProfile from "../pages/recruiter/profile/RecruiterProfile";
 
+// Recruiter - CVs
+import RecruiterCVs from "../pages/recruiter/cvs/RecruiterCVs";
+import RecruiterCVDetails from "../pages/recruiter/cvs/RecruiterCVDetails";
+import RecruiterGeneratedCVView from "../pages/recruiter/cvs/RecruiterGeneratedCVView";
+
 // Candidate - Positions
 import CandidatePositions from "../pages/candidate/positions/CandidatePositions";
 import CandidatePositionDetails from "../pages/candidate/positions/CandidatePositionDetails";
@@ -93,6 +98,34 @@ const AppRoutes = () => {
                     element={
                         <ProtectedRoute allowedRoles={["RECRUITER"]}>
                             <RecruiterProfile />
+                        </ProtectedRoute>
+                    }
+                />
+
+                {/* Recruiter CVs */}
+                <Route
+                    path="/recruiter/cvs"
+                    element={
+                        <ProtectedRoute allowedRoles={["RECRUITER"]}>
+                            <RecruiterCVs />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/recruiter/cvs/:id/view"
+                    element={
+                        <ProtectedRoute allowedRoles={["RECRUITER"]}>
+                            <RecruiterGeneratedCVView />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/recruiter/cvs/:id"
+                    element={
+                        <ProtectedRoute allowedRoles={["RECRUITER"]}>
+                            <RecruiterCVDetails />
                         </ProtectedRoute>
                     }
                 />
