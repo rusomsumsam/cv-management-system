@@ -16,11 +16,21 @@ const isSupportedRole = (role) =>
  * Normalize optional string field
  */
 const normalizeOptionalString = (value) => {
+    if (value === undefined || value === null) {
+        return null;
+    }
     if (typeof value !== "string") {
         return null;
     }
     const trimmedValue = value.trim();
     return trimmedValue || null;
+};
+
+/**
+ * Validate optional string input type
+ */
+const isValidOptionalStringInput = (value) => {
+    return value === undefined || value === null || typeof value === "string";
 };
 
 /**
@@ -42,15 +52,48 @@ const getValidId = (value) => {
 };
 
 /**
+ * Missing value detection
+ */
+const isMissingValue = (value) => {
+    return (
+        value === null ||
+        value === undefined ||
+        (typeof value === "string" && value.trim() === "")
+    );
+};
+
+/**
+ * Safe request body extraction
+ */
+const getRequestBody = (req) => {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return {};
+    }
+    return req.body;
+};
+
+/**
  * Handle server errors safely
  */
 const handleServerError = (res, operation, error) => {
-    console.error(`CV ${operation} error:`, error);
+    console.error(`CV ${operation} error:`, error.message);
     return res.status(500).json({
         success: false,
         message: `Failed to ${operation} CV. Please try again.`,
     });
 };
+
+/**
+ * Controlled application error for expected transaction failures
+ */
+class CVRequestError extends Error {
+    constructor(statusCode, message, details = null) {
+        super(message);
+        this.name = "CVRequestError";
+        this.statusCode = statusCode;
+        this.details = details;
+    }
+}
 
 /**
  * Shared selection for CV list items
@@ -172,20 +215,16 @@ const cvDetailWithPositionAttributesSelect = {
 };
 
 /**
- * Controlled application error for expected transaction failures
- */
-class CVRequestError extends Error {
-    constructor(statusCode, message) {
-        super(message);
-        this.name = "CVRequestError";
-        this.statusCode = statusCode;
-    }
-}
-
-/**
  * Create a new CV
  */
 const createCV = async (req, res) => {
+    if (!req.user?.id) {
+        return res.status(401).json({
+            success: false,
+            message: "Authentication required.",
+        });
+    }
+
     const role = getRequestRole(req);
 
     if (!isSupportedRole(role)) {
@@ -195,21 +234,17 @@ const createCV = async (req, res) => {
         });
     }
 
-    if (role === "RECRUITER") {
+    if (role !== "CANDIDATE") {
         return res.status(403).json({
             success: false,
-            message: "Recruiters cannot create candidate CVs.",
+            message: "Only Candidates can create CVs through this endpoint.",
         });
     }
 
-    const body =
-        req.body && typeof req.body === "object" && !Array.isArray(req.body)
-            ? req.body
-            : {};
+    const body = getRequestBody(req);
 
     const { fullName, email, positionId, phone, summary, skills, education, experience, projects } = body;
 
-    // Required fields validation
     if (typeof fullName !== "string" || fullName.trim() === "") {
         return res.status(400).json({
             success: false,
@@ -238,10 +273,48 @@ const createCV = async (req, res) => {
         });
     }
 
-    // Normalize all values once
     const normalizedFullName = fullName.trim();
     const normalizedEmail = email.trim();
     const normalizedPositionId = positionId.trim();
+
+    // Validate optional fields explicitly
+    if (!isValidOptionalStringInput(phone)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid phone format.",
+        });
+    }
+    if (!isValidOptionalStringInput(summary)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid summary format.",
+        });
+    }
+    if (!isValidOptionalStringInput(skills)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid skills format.",
+        });
+    }
+    if (!isValidOptionalStringInput(education)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid education format.",
+        });
+    }
+    if (!isValidOptionalStringInput(experience)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid experience format.",
+        });
+    }
+    if (!isValidOptionalStringInput(projects)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid projects format.",
+        });
+    }
+
     const normalizedPhone = normalizeOptionalString(phone);
     const normalizedSummary = normalizeOptionalString(summary);
     const normalizedSkills = normalizeOptionalString(skills);
@@ -250,9 +323,7 @@ const createCV = async (req, res) => {
     const normalizedProjects = normalizeOptionalString(projects);
 
     try {
-        // Use one interactive transaction for all database operations
         const newCV = await prisma.$transaction(async (tx) => {
-            // 1. Load the Position and its PositionAttribute relations
             const position = await tx.position.findUnique({
                 where: { id: normalizedPositionId },
                 select: {
@@ -270,14 +341,13 @@ const createCV = async (req, res) => {
                 throw new CVRequestError(404, "Position not found.");
             }
 
-            if (role === "CANDIDATE" && !position.isActive) {
+            if (!position.isActive) {
                 throw new CVRequestError(
                     403,
                     "This position is not available for CV creation."
                 );
             }
 
-            // 2. Check for duplicate CV using the compound unique selector
             const existingCV = await tx.cV.findUnique({
                 where: {
                     userId_positionId: {
@@ -297,7 +367,6 @@ const createCV = async (req, res) => {
                 );
             }
 
-            // 3. Determine which Position Attributes are missing from the user's profile
             const positionAttributeIds = position.positionAttributes.map(
                 (item) => item.attributeId
             );
@@ -326,7 +395,6 @@ const createCV = async (req, res) => {
                 );
             }
 
-            // 4. Create missing UserAttribute records with value null
             if (missingAttributeIds.length > 0) {
                 await tx.userAttribute.createMany({
                     data: missingAttributeIds.map((attributeId) => ({
@@ -338,7 +406,6 @@ const createCV = async (req, res) => {
                 });
             }
 
-            // 5. Create the CV as DRAFT
             const createdCV = await tx.cV.create({
                 data: {
                     fullName: normalizedFullName,
@@ -351,7 +418,7 @@ const createCV = async (req, res) => {
                     projects: normalizedProjects,
                     userId: req.user.id,
                     positionId: normalizedPositionId,
-                    // status defaults to DRAFT
+                    status: "DRAFT",
                 },
                 select: cvDetailSelect,
             });
@@ -364,15 +431,14 @@ const createCV = async (req, res) => {
             data: newCV,
         });
     } catch (error) {
-        // Controlled expected errors
         if (error instanceof CVRequestError) {
             return res.status(error.statusCode).json({
                 success: false,
                 message: error.message,
+                ...(error.details || {}),
             });
         }
 
-        // Prisma unique constraint race condition (P2002)
         if (
             error instanceof Prisma.PrismaClientKnownRequestError &&
             error.code === "P2002"
@@ -391,6 +457,13 @@ const createCV = async (req, res) => {
  * Get all CVs (role-based filtering)
  */
 const getCVs = async (req, res) => {
+    if (!req.user?.id) {
+        return res.status(401).json({
+            success: false,
+            message: "Authentication required.",
+        });
+    }
+
     const role = getRequestRole(req);
 
     if (!isSupportedRole(role)) {
@@ -403,9 +476,19 @@ const getCVs = async (req, res) => {
     let where = {};
 
     if (role === "CANDIDATE") {
-        where = { userId: req.user.id };
+        where = {
+            userId: req.user.id,
+            position: {
+                isActive: true,
+            },
+        };
     } else if (role === "RECRUITER") {
-        where = { status: "PUBLISHED" };
+        where = {
+            status: "PUBLISHED",
+            position: {
+                isActive: true,
+            },
+        };
     }
     // ADMIN: no additional filter
 
@@ -432,6 +515,13 @@ const getCVs = async (req, res) => {
  * Get a single CV by ID (role-based authorization)
  */
 const getCVById = async (req, res) => {
+    if (!req.user?.id) {
+        return res.status(401).json({
+            success: false,
+            message: "Authentication required.",
+        });
+    }
+
     const role = getRequestRole(req);
 
     if (!isSupportedRole(role)) {
@@ -450,9 +540,29 @@ const getCVById = async (req, res) => {
     }
 
     try {
-        // Use expanded selection that includes positionAttributes
-        const cv = await prisma.cV.findUnique({
-            where: { id },
+        let where = { id };
+
+        if (role === "CANDIDATE") {
+            where = {
+                id,
+                userId: req.user.id,
+                position: {
+                    isActive: true,
+                },
+            };
+        } else if (role === "RECRUITER") {
+            where = {
+                id,
+                status: "PUBLISHED",
+                position: {
+                    isActive: true,
+                },
+            };
+        }
+        // ADMIN: where = { id }
+
+        const cv = await prisma.cV.findFirst({
+            where,
             select: cvDetailWithPositionAttributesSelect,
         });
 
@@ -463,28 +573,11 @@ const getCVById = async (req, res) => {
             });
         }
 
-        // Authorization
-        if (role === "CANDIDATE" && cv.userId !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: "You are not authorized to view this CV.",
-            });
-        }
-
-        if (role === "RECRUITER" && cv.status !== "PUBLISHED") {
-            return res.status(403).json({
-                success: false,
-                message: "You are not authorized to view this CV.",
-            });
-        }
-
-        // Determine Position Attribute IDs
         const attributeIds =
             cv.position.positionAttributes?.map(
                 (positionAttribute) => positionAttribute.attributeId
             ) || [];
 
-        // Look up master UserAttribute values for the CV owner
         let userAttributes = [];
         if (attributeIds.length > 0) {
             userAttributes = await prisma.userAttribute.findMany({
@@ -503,7 +596,6 @@ const getCVById = async (req, res) => {
             });
         }
 
-        // Build a map for fast lookups
         const userAttributeMap = new Map(
             userAttributes.map((userAttribute) => [
                 userAttribute.attributeId,
@@ -511,7 +603,6 @@ const getCVById = async (req, res) => {
             ])
         );
 
-        // Build dynamic attributes array
         const dynamicAttributes = cv.position.positionAttributes.map(
             (positionAttribute) => {
                 const userAttribute = userAttributeMap.get(
@@ -519,8 +610,6 @@ const getCVById = async (req, res) => {
                 );
 
                 const value = userAttribute?.value ?? null;
-                const isMissing =
-                    typeof value !== "string" || value.trim() === "";
 
                 return {
                     positionAttributeId: positionAttribute.id,
@@ -530,21 +619,34 @@ const getCVById = async (req, res) => {
                     type: positionAttribute.attribute.type,
                     userAttributeId: userAttribute?.id || null,
                     value,
-                    isMissing,
+                    isMissing: isMissingValue(value),
                 };
             }
         );
 
-        // Remove nested positionAttributes from the response
-        const {
-            positionAttributes,
-            ...cleanPosition
-        } = cv.position;
+        const profileProjects = await prisma.project.findMany({
+            where: {
+                userId: cv.userId,
+            },
+            select: {
+                id: true,
+                title: true,
+                description: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+
+        const { positionAttributes, ...cleanPosition } = cv.position;
 
         const responseData = {
             ...cv,
             position: cleanPosition,
             attributes: dynamicAttributes,
+            profileProjects,
         };
 
         return res.status(200).json({
@@ -560,6 +662,13 @@ const getCVById = async (req, res) => {
  * Update a CV (role-based authorization)
  */
 const updateCV = async (req, res) => {
+    if (!req.user?.id) {
+        return res.status(401).json({
+            success: false,
+            message: "Authentication required.",
+        });
+    }
+
     const role = getRequestRole(req);
 
     if (!isSupportedRole(role)) {
@@ -577,14 +686,31 @@ const updateCV = async (req, res) => {
         });
     }
 
-    const body =
-        req.body && typeof req.body === "object" && !Array.isArray(req.body)
-            ? req.body
-            : {};
+    const body = getRequestBody(req);
 
     try {
-        const existingCV = await prisma.cV.findUnique({
-            where: { id },
+        if (role === "RECRUITER") {
+            return res.status(403).json({
+                success: false,
+                message: "You are not authorized to update this CV.",
+            });
+        }
+
+        let where = { id };
+
+        if (role === "CANDIDATE") {
+            where = {
+                id,
+                userId: req.user.id,
+                position: {
+                    isActive: true,
+                },
+            };
+        }
+        // ADMIN: where = { id }
+
+        const existingCV = await prisma.cV.findFirst({
+            where,
             select: {
                 id: true,
                 userId: true,
@@ -600,22 +726,6 @@ const updateCV = async (req, res) => {
             });
         }
 
-        // Authorization
-        if (role === "RECRUITER") {
-            return res.status(403).json({
-                success: false,
-                message: "You are not authorized to update this CV.",
-            });
-        }
-
-        if (role === "CANDIDATE" && existingCV.userId !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: "You are not authorized to update this CV.",
-            });
-        }
-
-        // Build updateData from allowed fields only
         const updateData = {};
 
         const {
@@ -657,26 +767,62 @@ const updateCV = async (req, res) => {
         }
 
         if (Object.prototype.hasOwnProperty.call(body, "phone")) {
+            if (!isValidOptionalStringInput(phone)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid phone format.",
+                });
+            }
             updateData.phone = normalizeOptionalString(phone);
         }
 
         if (Object.prototype.hasOwnProperty.call(body, "summary")) {
+            if (!isValidOptionalStringInput(summary)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid summary format.",
+                });
+            }
             updateData.summary = normalizeOptionalString(summary);
         }
 
         if (Object.prototype.hasOwnProperty.call(body, "skills")) {
+            if (!isValidOptionalStringInput(skills)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid skills format.",
+                });
+            }
             updateData.skills = normalizeOptionalString(skills);
         }
 
         if (Object.prototype.hasOwnProperty.call(body, "education")) {
+            if (!isValidOptionalStringInput(education)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid education format.",
+                });
+            }
             updateData.education = normalizeOptionalString(education);
         }
 
         if (Object.prototype.hasOwnProperty.call(body, "experience")) {
+            if (!isValidOptionalStringInput(experience)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid experience format.",
+                });
+            }
             updateData.experience = normalizeOptionalString(experience);
         }
 
         if (Object.prototype.hasOwnProperty.call(body, "projects")) {
+            if (!isValidOptionalStringInput(projects)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid projects format.",
+                });
+            }
             updateData.projects = normalizeOptionalString(projects);
         }
 
@@ -694,6 +840,116 @@ const updateCV = async (req, res) => {
                     message: "Invalid CV status.",
                 });
             }
+
+            // Only PUBLISHED requires completeness validation in a transaction
+            if (normalizedStatus === "PUBLISHED") {
+                try {
+                    const updatedCV = await prisma.$transaction(async (tx) => {
+                        // Reload the CV within the transaction (role-aware)
+                        let txWhere = { id };
+                        if (role === "CANDIDATE") {
+                            txWhere = {
+                                id,
+                                userId: req.user.id,
+                                position: {
+                                    isActive: true,
+                                },
+                            };
+                        }
+                        // ADMIN: txWhere = { id }
+
+                        const txCV = await tx.cV.findFirst({
+                            where: txWhere,
+                            select: {
+                                id: true,
+                                userId: true,
+                                positionId: true,
+                            },
+                        });
+
+                        if (!txCV) {
+                            throw new CVRequestError(404, "CV not found.");
+                        }
+
+                        // Load all PositionAttributes for this CV's Position
+                        const positionAttributes = await tx.positionAttribute.findMany({
+                            where: {
+                                positionId: txCV.positionId,
+                            },
+                            select: {
+                                attributeId: true,
+                            },
+                        });
+
+                        const attributeIds = positionAttributes.map((pa) => pa.attributeId);
+
+                        let userAttributes = [];
+                        if (attributeIds.length > 0) {
+                            userAttributes = await tx.userAttribute.findMany({
+                                where: {
+                                    userId: txCV.userId,
+                                    attributeId: {
+                                        in: attributeIds,
+                                    },
+                                },
+                                select: {
+                                    attributeId: true,
+                                    value: true,
+                                },
+                            });
+                        }
+
+                        const userAttributeMap = new Map(
+                            userAttributes.map((ua) => [ua.attributeId, ua])
+                        );
+
+                        const missingAttributeIds = attributeIds.filter((attrId) => {
+                            const ua = userAttributeMap.get(attrId);
+                            return !ua || isMissingValue(ua.value);
+                        });
+
+                        if (missingAttributeIds.length > 0) {
+                            throw new CVRequestError(
+                                409,
+                                "Complete all required position attributes before publishing this CV.",
+                                {
+                                    missingAttributeIds,
+                                }
+                            );
+                        }
+
+                        // Apply all updates atomically
+                        const finalUpdateData = {
+                            ...updateData,
+                            status: normalizedStatus,
+                        };
+
+                        const updated = await tx.cV.update({
+                            where: { id: txCV.id },
+                            data: finalUpdateData,
+                            select: cvDetailSelect,
+                        });
+
+                        return updated;
+                    });
+
+                    return res.status(200).json({
+                        success: true,
+                        data: updatedCV,
+                    });
+                } catch (txError) {
+                    if (txError instanceof CVRequestError) {
+                        return res.status(txError.statusCode).json({
+                            success: false,
+                            message: txError.message,
+                            ...(txError.details || {}),
+                        });
+                    }
+                    throw txError;
+                }
+            }
+
+            // DRAFT or no status change: update outside transaction
             updateData.status = normalizedStatus;
         }
 
@@ -704,8 +960,9 @@ const updateCV = async (req, res) => {
             });
         }
 
+        // Non-publish or already processed status update
         const updatedCV = await prisma.cV.update({
-            where: { id },
+            where: { id: existingCV.id },
             data: updateData,
             select: cvDetailSelect,
         });
@@ -715,6 +972,13 @@ const updateCV = async (req, res) => {
             data: updatedCV,
         });
     } catch (error) {
+        if (error instanceof CVRequestError) {
+            return res.status(error.statusCode).json({
+                success: false,
+                message: error.message,
+                ...(error.details || {}),
+            });
+        }
         return handleServerError(res, "update", error);
     }
 };
@@ -723,6 +987,13 @@ const updateCV = async (req, res) => {
  * Delete a CV (role-based authorization)
  */
 const deleteCV = async (req, res) => {
+    if (!req.user?.id) {
+        return res.status(401).json({
+            success: false,
+            message: "Authentication required.",
+        });
+    }
+
     const role = getRequestRole(req);
 
     if (!isSupportedRole(role)) {
@@ -741,11 +1012,27 @@ const deleteCV = async (req, res) => {
     }
 
     try {
-        const existingCV = await prisma.cV.findUnique({
-            where: { id },
+        if (role === "RECRUITER") {
+            return res.status(403).json({
+                success: false,
+                message: "You are not authorized to delete this CV.",
+            });
+        }
+
+        let where = { id };
+
+        if (role === "CANDIDATE") {
+            where = {
+                id,
+                userId: req.user.id,
+            };
+        }
+        // ADMIN: where = { id }
+
+        const existingCV = await prisma.cV.findFirst({
+            where,
             select: {
                 id: true,
-                userId: true,
             },
         });
 
@@ -756,24 +1043,23 @@ const deleteCV = async (req, res) => {
             });
         }
 
-        // Authorization
-        if (role === "RECRUITER") {
-            return res.status(403).json({
-                success: false,
-                message: "You are not authorized to delete this CV.",
+        try {
+            await prisma.cV.delete({
+                where: { id: existingCV.id },
             });
+        } catch (deleteError) {
+            if (
+                deleteError instanceof Prisma.PrismaClientKnownRequestError &&
+                ["P2003", "P2014"].includes(deleteError.code)
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    message:
+                        "This CV cannot be deleted because related records still exist.",
+                });
+            }
+            throw deleteError;
         }
-
-        if (role === "CANDIDATE" && existingCV.userId !== req.user.id) {
-            return res.status(403).json({
-                success: false,
-                message: "You are not authorized to delete this CV.",
-            });
-        }
-
-        await prisma.cV.delete({
-            where: { id },
-        });
 
         return res.status(200).json({
             success: true,

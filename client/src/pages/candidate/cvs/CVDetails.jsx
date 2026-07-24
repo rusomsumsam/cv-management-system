@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import {
     ArrowLeft,
     Pencil,
     FileText,
-    Briefcase,
+    BriefcaseBusiness,
     GraduationCap,
     Code,
     FolderKanban,
@@ -14,41 +14,56 @@ import {
     AlertCircle,
     ListChecks,
     ExternalLink,
+    RefreshCw,
+    Upload,
+    Info,
+    Image as ImageIcon,
 } from "lucide-react";
 import api from "../../../api/axios";
 
 const CVDetails = () => {
     const { id } = useParams();
-    const navigate = useNavigate();
 
     const [cv, setCv] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [retryCounter, setRetryCounter] = useState(0);
+    const [publishing, setPublishing] = useState(false);
+    const [publishError, setPublishError] = useState("");
+    const [publishMissingAttributeIds, setPublishMissingAttributeIds] = useState([]);
 
     useEffect(() => {
         let cancelled = false;
 
-        api
-            .get(`/cvs/${id}`)
+        api.get(`/cvs/${id}`)
             .then((response) => {
                 if (cancelled) return;
+
                 const data = response.data?.data;
+
                 if (!data) {
                     setCv(null);
                     setError("CV not found.");
                     return;
                 }
+
                 setCv(data);
+                setPublishError("");
+                setPublishMissingAttributeIds([]);
                 setError("");
             })
             .catch((requestError) => {
                 if (cancelled) return;
+
                 setCv(null);
                 setError(
                     requestError.response?.data?.message ||
                     "Failed to load CV details. Please try again."
                 );
-                console.error("Failed to fetch CV details:", requestError.message);
+                console.error(
+                    "Failed to load CV details:",
+                    requestError.message
+                );
             })
             .finally(() => {
                 if (!cancelled) {
@@ -59,24 +74,20 @@ const CVDetails = () => {
         return () => {
             cancelled = true;
         };
-    }, [id]);
+    }, [id, retryCounter]);
 
-    const handleBack = () => {
-        navigate("/my-cvs");
-    };
-
-    const handleEdit = () => {
-        navigate(`/cvs/edit/${id}`);
-    };
-
-    const handleViewGeneratedCV = () => {
-        navigate(`/generated-cv/${id}`);
+    const handleRetry = () => {
+        setLoading(true);
+        setError("");
+        setRetryCounter((previous) => previous + 1);
     };
 
     const formatDate = (dateString) => {
         if (!dateString) return "N/A";
+
         const date = new Date(dateString);
         if (Number.isNaN(date.getTime())) return "N/A";
+
         return date.toLocaleDateString("en-US", {
             year: "numeric",
             month: "short",
@@ -84,9 +95,34 @@ const CVDetails = () => {
         });
     };
 
+    const formatDateOnly = (value) => {
+        if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            return String(value);
+        }
+
+        const [year, month, day] = value.split("-").map(Number);
+        const date = new Date(Date.UTC(year, month - 1, day));
+
+        if (
+            date.getUTCFullYear() !== year ||
+            date.getUTCMonth() !== month - 1 ||
+            date.getUTCDate() !== day
+        ) {
+            return value;
+        }
+
+        return date.toLocaleDateString("en-US", {
+            timeZone: "UTC",
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+        });
+    };
+
     const formatStatus = (status) => {
-        if (!status) return "Draft";
-        return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+        if (status === "PUBLISHED") return "Published";
+        if (status === "DRAFT") return "Draft";
+        return "Unknown";
     };
 
     const formatAttributeType = (type) => {
@@ -94,45 +130,168 @@ const CVDetails = () => {
         return type
             .toLowerCase()
             .replace(/_/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase());
+            .replace(/\b\w/g, (character) => character.toUpperCase());
+    };
+
+    const isMissingValue = (value) => {
+        return (
+            value === null ||
+            value === undefined ||
+            (typeof value === "string" && value.trim() === "")
+        );
     };
 
     const isAttributeMissing = (attribute) => {
-        if (typeof attribute.isMissing === "boolean") {
+        if (typeof attribute?.isMissing === "boolean") {
             return attribute.isMissing;
         }
-        return typeof attribute.value !== "string" || attribute.value.trim() === "";
+        return isMissingValue(attribute?.value);
+    };
+
+    const renderAttributeValue = (attribute) => {
+        const value = attribute?.value;
+        const type = attribute?.type;
+
+        if (isAttributeMissing(attribute)) {
+            return (
+                <span className="inline-flex items-center gap-1.5 font-medium text-red-600 dark:text-red-400">
+                    <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                    Missing information
+                </span>
+            );
+        }
+
+        if (type === "BOOLEAN") {
+            const isTrue = value === true || value === "true";
+            return <span className="text-slate-900 dark:text-white">{isTrue ? "Yes" : "No"}</span>;
+        }
+
+        if (type === "DATE") {
+            return <span className="text-slate-900 dark:text-white">{formatDateOnly(String(value))}</span>;
+        }
+
+        if (type === "IMAGE") {
+            return (
+                <a
+                    href={String(value)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-400"
+                >
+                    <ImageIcon className="h-4 w-4" aria-hidden="true" />
+                    Open external image
+                </a>
+            );
+        }
+
+        if (type === "TEXT") {
+            return <span className="whitespace-pre-wrap break-words text-slate-900 dark:text-white">{String(value)}</span>;
+        }
+
+        return <span className="break-words text-slate-900 dark:text-white">{String(value)}</span>;
+    };
+
+    const handlePublish = async () => {
+        if (!cv || publishing || cv.status !== "DRAFT") return;
+
+        try {
+            setPublishing(true);
+            setPublishError("");
+            setPublishMissingAttributeIds([]);
+
+            const response = await api.patch(`/cvs/${id}`, {
+                status: "PUBLISHED",
+            });
+
+            const updatedCV = response.data?.data;
+
+            if (!updatedCV) {
+                throw new Error("CV publish returned no data.");
+            }
+
+            setCv((currentCV) => ({
+                ...currentCV,
+                ...updatedCV,
+                attributes: currentCV?.attributes || [],
+                profileProjects: currentCV?.profileProjects || [],
+            }));
+        } catch (requestError) {
+            setPublishError(
+                requestError.response?.data?.message ||
+                "Failed to publish CV. Please try again."
+            );
+
+            const missingIds = requestError.response?.data?.missingAttributeIds;
+            setPublishMissingAttributeIds(
+                Array.isArray(missingIds) ? missingIds : []
+            );
+
+            console.error(
+                "Failed to publish CV:",
+                requestError.message
+            );
+        } finally {
+            setPublishing(false);
+        }
     };
 
     if (loading) {
         return (
-            <div className="flex min-h-80 items-center justify-center">
-                <div className="text-center">
-                    <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-r-transparent mb-4"></div>
-                    <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">
-                        Loading CV details...
-                    </p>
+            <div className="flex min-h-[320px] items-center justify-center">
+                <div className="text-slate-600 dark:text-slate-400 text-sm font-medium flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Loading CV details...
                 </div>
             </div>
         );
     }
 
-    if (error) {
+    if (error && !cv) {
         return (
-            <div className="flex min-h-80 items-center justify-center">
-                <div className="text-center max-w-md" role="alert">
-                    <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" aria-hidden="true" />
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-                        Error Loading CV
-                    </h2>
-                    <p className="text-slate-600 dark:text-slate-400">{error}</p>
-                    <button
-                        type="button"
-                        onClick={handleBack}
-                        className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            <div className="space-y-6">
+                <div className="flex items-center gap-4">
+                    <Link
+                        to="/my-cvs"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded dark:focus:ring-offset-slate-900"
                     >
-                        Go Back
-                    </button>
+                        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                        Back to My CVs
+                    </Link>
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+                            CV Details
+                        </h1>
+                        <p className="text-slate-600 dark:text-slate-400 mt-1">
+                            View and manage your generated CV.
+                        </p>
+                    </div>
+                </div>
+
+                <div
+                    className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6"
+                    role="alert"
+                >
+                    <div className="flex items-start gap-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+                            <AlertCircle className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-sm font-medium text-red-700 dark:text-red-400">
+                                Error loading CV
+                            </h3>
+                            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                                {error}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={handleRetry}
+                                className="mt-3 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900"
+                            >
+                                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                                Retry
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -140,26 +299,52 @@ const CVDetails = () => {
 
     if (!cv) {
         return (
-            <div className="flex min-h-80 items-center justify-center">
-                <div className="text-center max-w-md">
-                    <FileText className="w-12 h-12 text-slate-400 dark:text-slate-500 mx-auto mb-4" aria-hidden="true" />
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+            <div className="space-y-6">
+                <div className="flex items-center gap-4">
+                    <Link
+                        to="/my-cvs"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded dark:focus:ring-offset-slate-900"
+                    >
+                        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                        Back to My CVs
+                    </Link>
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+                            CV Details
+                        </h1>
+                        <p className="text-slate-600 dark:text-slate-400 mt-1">
+                            View and manage your generated CV.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mx-auto mb-4">
+                        <FileText className="h-6 w-6 text-slate-500 dark:text-slate-400" aria-hidden="true" />
+                    </div>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
                         CV not found
-                    </h2>
-                    <p className="text-slate-600 dark:text-slate-400">
+                    </h3>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                         The requested CV does not exist.
                     </p>
                     <button
                         type="button"
-                        onClick={handleBack}
-                        className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        onClick={handleRetry}
+                        className="mt-4 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900"
                     >
-                        Go Back
+                        <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                        Retry
                     </button>
                 </div>
             </div>
         );
     }
+
+    const attributes = Array.isArray(cv.attributes) ? cv.attributes : [];
+    const profileProjects = Array.isArray(cv.profileProjects) ? cv.profileProjects : [];
+    const missingAttributes = attributes.filter(isAttributeMissing);
+    const missingAttributeCount = missingAttributes.length;
 
     const getFullName = () => {
         const firstName = cv.user?.firstName;
@@ -186,9 +371,6 @@ const CVDetails = () => {
         ]
         : [];
 
-    const attributes = Array.isArray(cv.attributes) ? cv.attributes : [];
-    const missingAttributeCount = attributes.filter(isAttributeMissing).length;
-
     const getStatusIcon = (status) => {
         if (status === "PUBLISHED") {
             return <CheckCircle2 className="h-4 w-4" aria-hidden="true" />;
@@ -206,7 +388,11 @@ const CVDetails = () => {
                             CV Details
                         </h1>
                         <p className="text-slate-600 dark:text-slate-400 mt-1">
-                            View and manage your CV for {cv.position?.title || "this position"}.
+                            View and manage the CV generated for{" "}
+                            <span className="font-medium text-slate-900 dark:text-white">
+                                {cv.position?.title || "this position"}
+                            </span>
+                            .
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -223,33 +409,89 @@ const CVDetails = () => {
                             <Heart className="h-4 w-4" aria-hidden="true" />
                             {likesCount} like{likesCount !== 1 ? "s" : ""}
                         </span>
-                        <button
-                            type="button"
-                            onClick={handleBack}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                        <Link
+                            to="/my-cvs"
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                         >
                             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                             Back
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleEdit}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        </Link>
+                        <Link
+                            to={`/cvs/edit/${id}`}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900"
                         >
                             <Pencil className="h-4 w-4" aria-hidden="true" />
                             Edit CV
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleViewGeneratedCV}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        </Link>
+                        <Link
+                            to={`/generated-cv/${id}`}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-emerald-700 dark:hover:bg-emerald-600 dark:focus:ring-offset-slate-900"
                         >
                             <ExternalLink className="h-4 w-4" aria-hidden="true" />
                             View Generated CV
-                        </button>
+                        </Link>
+                        {cv.status === "DRAFT" && (
+                            <button
+                                type="button"
+                                onClick={handlePublish}
+                                disabled={publishing}
+                                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {publishing ? (
+                                    <>
+                                        <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                        Publishing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Upload className="h-4 w-4" aria-hidden="true" />
+                                        Publish CV
+                                    </>
+                                )}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
+
+            {/* Publish Error */}
+            {publishError && (
+                <div
+                    className="bg-white dark:bg-slate-900 rounded-xl border border-red-200 dark:border-red-800 shadow-sm p-4"
+                    role="alert"
+                >
+                    <div className="flex items-start gap-3">
+                        <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                        <div>
+                            <p className="text-sm font-medium text-red-800 dark:text-red-300">
+                                {publishError}
+                            </p>
+                            {publishMissingAttributeIds.length > 0 && (
+                                <p className="text-xs text-red-700 dark:text-red-400 mt-1">
+                                    Complete the highlighted Profile Attributes before publishing.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Published Info */}
+            {cv.status === "PUBLISHED" && (
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-800 shadow-sm p-4">
+                    <div className="flex items-start gap-3">
+                        <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                        <div>
+                            <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                                This CV is Published
+                            </p>
+                            <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
+                                It is visible to Recruiters while the Position remains available.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* CV Overview */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
@@ -275,15 +517,21 @@ const CVDetails = () => {
                     </div>
                     <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Position</span>
-                        <span className="text-slate-900 dark:text-white font-medium">{cv.position?.title || "Not specified"}</span>
+                        <span className="text-slate-900 dark:text-white font-medium">
+                            {cv.position?.title || "Not specified"}
+                        </span>
                     </div>
                     <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Company</span>
-                        <span className="text-slate-900 dark:text-white">{cv.position?.company || "Not specified"}</span>
+                        <span className="text-slate-900 dark:text-white">
+                            {cv.position?.company || "Not specified"}
+                        </span>
                     </div>
                     <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Department</span>
-                        <span className="text-slate-900 dark:text-white">{cv.position?.department || "Not specified"}</span>
+                        <span className="text-slate-900 dark:text-white">
+                            {cv.position?.department || "Not specified"}
+                        </span>
                     </div>
                     <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Position Status</span>
@@ -315,7 +563,7 @@ const CVDetails = () => {
                             Professional Summary
                         </h2>
                     </div>
-                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
                         {cv.summary || "No summary provided."}
                     </p>
                 </div>
@@ -352,24 +600,25 @@ const CVDetails = () => {
                             Education
                         </h2>
                     </div>
-                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
                         {cv.education || "No education provided."}
                     </p>
                 </div>
 
                 <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
                     <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 dark:border-slate-800 pb-2">
-                        <Briefcase className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                        <BriefcaseBusiness className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
                         <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
                             Experience
                         </h2>
                     </div>
-                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
                         {cv.experience || "No experience provided."}
                     </p>
                 </div>
             </div>
 
+            {/* Relational Projects Section */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
                 <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 dark:border-slate-800 pb-2">
                     <FolderKanban className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
@@ -377,9 +626,44 @@ const CVDetails = () => {
                         Projects
                     </h2>
                 </div>
-                <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                    {cv.projects || "No projects provided."}
-                </p>
+                {profileProjects.length > 0 ? (
+                    <div className="space-y-4">
+                        {profileProjects.map((project) => (
+                            <div
+                                key={project.id}
+                                className="rounded-lg border border-slate-200 dark:border-slate-700 p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                            >
+                                <Link
+                                    to={`/projects/${project.id}`}
+                                    className="text-sm font-medium text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded dark:text-blue-400 dark:focus:ring-offset-slate-900"
+                                >
+                                    {project.title || "Untitled Project"}
+                                </Link>
+                                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                                    {project.description || "No description provided."}
+                                </p>
+                                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                                    Created {formatDate(project.createdAt)}
+                                </p>
+                            </div>
+                        ))}
+                        <div className="flex items-start gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 mt-2">
+                            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                            <div>
+                                <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
+                                    Projects are loaded dynamically from the Candidate Profile.
+                                </p>
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                                    Position tag filtering and maximum Project limits will be added after the related schema migration.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <p className="text-slate-600 dark:text-slate-400">
+                        No Profile Projects are currently available.
+                    </p>
+                )}
             </div>
 
             {/* Position Attributes */}
@@ -391,8 +675,8 @@ const CVDetails = () => {
                             Position Attributes
                         </h2>
                     </div>
-                    {attributes.length > 0 && (
-                        missingAttributeCount === 0 ? (
+                    {attributes.length > 0 &&
+                        (missingAttributeCount === 0 ? (
                             <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
                                 All position attributes are complete.
                             </span>
@@ -401,8 +685,7 @@ const CVDetails = () => {
                                 {missingAttributeCount} required attribute
                                 {missingAttributeCount !== 1 ? "s are" : " is"} missing.
                             </span>
-                        )
-                    )}
+                        ))}
                 </div>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
                     These values are synchronized with your Candidate Profile.
@@ -418,30 +701,55 @@ const CVDetails = () => {
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
                                 <tr>
-                                    <th scope="col" className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    <th
+                                        scope="col"
+                                        className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+                                    >
                                         Attribute
                                     </th>
-                                    <th scope="col" className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    <th
+                                        scope="col"
+                                        className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+                                    >
                                         Category
                                     </th>
-                                    <th scope="col" className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    <th
+                                        scope="col"
+                                        className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+                                    >
                                         Type
                                     </th>
-                                    <th scope="col" className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    <th
+                                        scope="col"
+                                        className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+                                    >
                                         Value
                                     </th>
-                                    <th scope="col" className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                    <th
+                                        scope="col"
+                                        className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+                                    >
                                         Status
+                                    </th>
+                                    <th
+                                        scope="col"
+                                        className="px-6 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+                                    >
+                                        Profile Action
                                     </th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                                 {attributes.map((attribute) => {
                                     const isMissing = isAttributeMissing(attribute);
+                                    const isPublishMissing =
+                                        publishMissingAttributeIds.includes(
+                                            attribute.attributeId
+                                        );
                                     return (
                                         <tr
                                             key={attribute.positionAttributeId}
-                                            className={`${isMissing
+                                            className={`${isMissing || isPublishMissing
                                                     ? "bg-red-50 dark:bg-red-900/10"
                                                     : "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                                                 }`}
@@ -456,16 +764,7 @@ const CVDetails = () => {
                                                 {formatAttributeType(attribute.type)}
                                             </td>
                                             <td className="px-6 py-4">
-                                                {isMissing ? (
-                                                    <span className="flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
-                                                        <AlertCircle className="h-4 w-4" aria-hidden="true" />
-                                                        Missing information
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-slate-900 dark:text-white">
-                                                        {attribute.value ?? "N/A"}
-                                                    </span>
-                                                )}
+                                                {renderAttributeValue(attribute)}
                                             </td>
                                             <td className="px-6 py-4">
                                                 {isMissing ? (
@@ -476,6 +775,23 @@ const CVDetails = () => {
                                                     <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                                                         Complete
                                                     </span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {attribute.userAttributeId ? (
+                                                    <Link
+                                                        to={`/profile/attributes/edit/${attribute.userAttributeId}`}
+                                                        className="text-sm font-medium text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded dark:text-blue-400 dark:focus:ring-offset-slate-900"
+                                                    >
+                                                        Edit Profile Value
+                                                    </Link>
+                                                ) : (
+                                                    <Link
+                                                        to="/profile/attributes"
+                                                        className="text-sm font-medium text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded dark:text-blue-400 dark:focus:ring-offset-slate-900"
+                                                    >
+                                                        Open Profile Attributes
+                                                    </Link>
                                                 )}
                                             </td>
                                         </tr>
@@ -495,29 +811,39 @@ const CVDetails = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
                     <div className="md:col-span-2">
                         <span className="text-slate-500 dark:text-slate-400 block">Title</span>
-                        <span className="text-slate-900 dark:text-white font-medium">{cv.position?.title || "Not specified"}</span>
+                        <span className="text-slate-900 dark:text-white font-medium">
+                            {cv.position?.title || "Not specified"}
+                        </span>
                     </div>
                     <div className="md:col-span-2">
                         <span className="text-slate-500 dark:text-slate-400 block">Description</span>
-                        <span className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                        <span className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
                             {cv.position?.description || "No description provided."}
                         </span>
                     </div>
                     <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Company</span>
-                        <span className="text-slate-900 dark:text-white">{cv.position?.company || "Not specified"}</span>
+                        <span className="text-slate-900 dark:text-white">
+                            {cv.position?.company || "Not specified"}
+                        </span>
                     </div>
                     <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Location</span>
-                        <span className="text-slate-900 dark:text-white">{cv.position?.location || "Not specified"}</span>
+                        <span className="text-slate-900 dark:text-white">
+                            {cv.position?.location || "Not specified"}
+                        </span>
                     </div>
                     <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Department</span>
-                        <span className="text-slate-900 dark:text-white">{cv.position?.department || "Not specified"}</span>
+                        <span className="text-slate-900 dark:text-white">
+                            {cv.position?.department || "Not specified"}
+                        </span>
                     </div>
                     <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Deadline</span>
-                        <span className="text-slate-900 dark:text-white">{formatDate(cv.position?.deadline)}</span>
+                        <span className="text-slate-900 dark:text-white">
+                            {formatDate(cv.position?.deadline)}
+                        </span>
                     </div>
                 </div>
             </div>
