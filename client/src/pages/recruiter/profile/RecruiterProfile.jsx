@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import api from "../../../api/axios";
 import useAuth from "../../../hooks/useAuth";
 import {
@@ -15,6 +15,15 @@ import {
     AlertCircle,
     CheckCircle2,
 } from "lucide-react";
+
+const isValidHttpUrl = (value) => {
+    try {
+        const parsedUrl = new URL(value);
+        return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:";
+    } catch {
+        return false;
+    }
+};
 
 const RecruiterProfile = () => {
     const { refreshAuth } = useAuth();
@@ -33,6 +42,8 @@ const RecruiterProfile = () => {
     const [successMessage, setSuccessMessage] = useState("");
     const [validationErrors, setValidationErrors] = useState({});
     const [imagePreviewError, setImagePreviewError] = useState(false);
+    const [savedImageError, setSavedImageError] = useState(false);
+    const [retryCounter, setRetryCounter] = useState(0);
 
     const getFullName = () => {
         const firstName = profile?.firstName;
@@ -95,43 +106,61 @@ const RecruiterProfile = () => {
         });
     };
 
-    const fetchProfile = async (showLoader = false) => {
-        if (showLoader) {
-            setLoading(true);
-        }
-
-        try {
-            setError("");
-
-            const response = await api.get("/profile");
-            const data = response.data.data;
-
-            setProfile(data);
-            setFormData({
-                firstName: data.firstName || "",
-                lastName: data.lastName || "",
-                location: data.location || "",
-                profilePhoto: data.profilePhoto || "",
-            });
-            setImagePreviewError(false);
-        } catch (err) {
-            setError(
-                err.response?.data?.message ||
-                "Failed to load profile. Please try again."
-            );
-            console.error("Error fetching profile:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     useEffect(() => {
-        const loadProfile = async () => {
-            await fetchProfile();
-        };
+        let cancelled = false;
 
-        loadProfile();
-    }, []);
+        api.get("/profile")
+            .then((response) => {
+                if (cancelled) return;
+
+                const data = response.data?.data;
+
+                if (!data) {
+                    setProfile(null);
+                    setError("Profile not found.");
+                    return;
+                }
+
+                setProfile(data);
+                setFormData({
+                    firstName: data.firstName || "",
+                    lastName: data.lastName || "",
+                    location: data.location || "",
+                    profilePhoto: data.profilePhoto || "",
+                });
+                setImagePreviewError(false);
+                setSavedImageError(false);
+                setError("");
+            })
+            .catch((requestError) => {
+                if (cancelled) return;
+
+                setProfile(null);
+                setError(
+                    requestError.response?.data?.message ||
+                    "Failed to load profile. Please try again."
+                );
+                console.error(
+                    "Failed to fetch recruiter profile:",
+                    requestError.message
+                );
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [retryCounter]);
+
+    const handleRetry = () => {
+        setLoading(true);
+        setError("");
+        setRetryCounter((previous) => previous + 1);
+    };
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -140,7 +169,6 @@ const RecruiterProfile = () => {
             [name]: value,
         }));
 
-        // Clear validation error for this field
         if (validationErrors[name]) {
             setValidationErrors((prev) => ({
                 ...prev,
@@ -148,12 +176,10 @@ const RecruiterProfile = () => {
             }));
         }
 
-        // Clear success message when user starts editing
         if (successMessage) {
             setSuccessMessage("");
         }
 
-        // Reset image preview error when URL changes
         if (name === "profilePhoto") {
             setImagePreviewError(false);
         }
@@ -175,12 +201,8 @@ const RecruiterProfile = () => {
 
         const profilePhotoTrim = formData.profilePhoto.trim();
 
-        if (profilePhotoTrim) {
-            const isValidUrl = /^https?:\/\//i.test(profilePhotoTrim);
-
-            if (!isValidUrl) {
-                errors.profilePhoto = "Enter a valid http or https image URL.";
-            }
+        if (profilePhotoTrim && !isValidHttpUrl(profilePhotoTrim)) {
+            errors.profilePhoto = "Enter a valid http or https image URL.";
         }
 
         setValidationErrors(errors);
@@ -207,7 +229,11 @@ const RecruiterProfile = () => {
             };
 
             const response = await api.patch("/profile", payload);
-            const updatedProfile = response.data.data;
+            const updatedProfile = response.data?.data;
+
+            if (!updatedProfile) {
+                throw new Error("Profile update returned no data.");
+            }
 
             setProfile(updatedProfile);
             setFormData({
@@ -216,17 +242,21 @@ const RecruiterProfile = () => {
                 location: updatedProfile.location || "",
                 profilePhoto: updatedProfile.profilePhoto || "",
             });
+            setSavedImageError(false);
 
             await refreshAuth();
             setIsEditing(false);
             setSuccessMessage("Profile updated successfully.");
             setImagePreviewError(false);
-        } catch (err) {
+        } catch (requestError) {
             setError(
-                err.response?.data?.message ||
+                requestError.response?.data?.message ||
                 "Failed to update profile. Please try again."
             );
-            console.error("Error updating profile:", err);
+            console.error(
+                "Failed to update recruiter profile:",
+                requestError.message
+            );
         } finally {
             setSaving(false);
         }
@@ -240,6 +270,8 @@ const RecruiterProfile = () => {
     };
 
     const handleCancel = () => {
+        if (saving) return;
+
         setFormData({
             firstName: profile?.firstName || "",
             lastName: profile?.lastName || "",
@@ -251,10 +283,6 @@ const RecruiterProfile = () => {
         setSuccessMessage("");
         setIsEditing(false);
         setImagePreviewError(false);
-    };
-
-    const handleRetry = () => {
-        fetchProfile(true);
     };
 
     if (loading) {
@@ -282,7 +310,10 @@ const RecruiterProfile = () => {
                     </p>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
+                <div
+                    className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6"
+                    role="alert"
+                >
                     <div className="flex items-start gap-4">
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
                             <AlertCircle className="h-5 w-5" aria-hidden="true" />
@@ -297,7 +328,7 @@ const RecruiterProfile = () => {
                             <button
                                 type="button"
                                 onClick={handleRetry}
-                                className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                             >
                                 Retry
                             </button>
@@ -333,7 +364,7 @@ const RecruiterProfile = () => {
                     <button
                         type="button"
                         onClick={handleRetry}
-                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                     >
                         Retry
                     </button>
@@ -366,7 +397,7 @@ const RecruiterProfile = () => {
                     <button
                         type="button"
                         onClick={handleEdit}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
                     >
                         <Pencil className="h-4 w-4" aria-hidden="true" />
                         Edit Profile
@@ -408,11 +439,12 @@ const RecruiterProfile = () => {
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-6">
                     <div className="flex-shrink-0">
-                        {hasProfilePhoto && !isEditing ? (
+                        {hasProfilePhoto && !savedImageError ? (
                             <img
                                 src={profile.profilePhoto}
                                 alt={fullName}
                                 className="h-20 w-20 flex-shrink-0 rounded-full border-2 border-slate-200 object-cover dark:border-slate-700"
+                                onError={() => setSavedImageError(true)}
                             />
                         ) : (
                             <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30 text-xl font-semibold text-blue-600 dark:text-blue-400">
@@ -475,13 +507,23 @@ const RecruiterProfile = () => {
                                 type="text"
                                 value={formData.firstName}
                                 onChange={handleChange}
-                                className={`w-full px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${validationErrors.firstName
-                                        ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10"
-                                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200"
+                                disabled={saving}
+                                aria-invalid={Boolean(validationErrors.firstName)}
+                                aria-describedby={
+                                    validationErrors.firstName
+                                        ? "firstName-error"
+                                        : undefined
+                                }
+                                className={`w-full px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${validationErrors.firstName
+                                    ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10"
+                                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200"
                                     }`}
                             />
                             {validationErrors.firstName && (
-                                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                                <p
+                                    id="firstName-error"
+                                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                                >
                                     {validationErrors.firstName}
                                 </p>
                             )}
@@ -501,13 +543,23 @@ const RecruiterProfile = () => {
                                 type="text"
                                 value={formData.lastName}
                                 onChange={handleChange}
-                                className={`w-full px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${validationErrors.lastName
-                                        ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10"
-                                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200"
+                                disabled={saving}
+                                aria-invalid={Boolean(validationErrors.lastName)}
+                                aria-describedby={
+                                    validationErrors.lastName
+                                        ? "lastName-error"
+                                        : undefined
+                                }
+                                className={`w-full px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${validationErrors.lastName
+                                    ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10"
+                                    : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200"
                                     }`}
                             />
                             {validationErrors.lastName && (
-                                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                                <p
+                                    id="lastName-error"
+                                    className="mt-1 text-sm text-red-600 dark:text-red-400"
+                                >
                                     {validationErrors.lastName}
                                 </p>
                             )}
@@ -547,7 +599,8 @@ const RecruiterProfile = () => {
                                 type="text"
                                 value={formData.location}
                                 onChange={handleChange}
-                                className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                disabled={saving}
+                                className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 placeholder="City, Country"
                             />
                         </div>
@@ -568,14 +621,24 @@ const RecruiterProfile = () => {
                                         type="url"
                                         value={formData.profilePhoto}
                                         onChange={handleChange}
-                                        className={`w-full px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${validationErrors.profilePhoto
-                                                ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10"
-                                                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200"
+                                        disabled={saving}
+                                        aria-invalid={Boolean(validationErrors.profilePhoto)}
+                                        aria-describedby={
+                                            validationErrors.profilePhoto
+                                                ? "profilePhoto-error"
+                                                : undefined
+                                        }
+                                        className={`w-full px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${validationErrors.profilePhoto
+                                            ? "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10"
+                                            : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200"
                                             }`}
                                         placeholder="Enter an external image URL"
                                     />
                                     {validationErrors.profilePhoto && (
-                                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                                        <p
+                                            id="profilePhoto-error"
+                                            className="mt-1 text-sm text-red-600 dark:text-red-400"
+                                        >
                                             {validationErrors.profilePhoto}
                                         </p>
                                     )}
@@ -628,7 +691,8 @@ const RecruiterProfile = () => {
                         <button
                             type="button"
                             onClick={handleCancel}
-                            className="flex-1 px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-slate-500"
+                            disabled={saving}
+                            className="flex-1 px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <X className="h-5 w-5" aria-hidden="true" />
                             Cancel
@@ -636,7 +700,7 @@ const RecruiterProfile = () => {
                         <button
                             type="submit"
                             disabled={saving}
-                            className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {saving ? (
                                 <>
