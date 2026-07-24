@@ -10,7 +10,7 @@ import {
 import api from "../../../api/axios";
 
 const Profile = () => {
-    
+
 
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
