@@ -268,7 +268,7 @@ const Dashboard = () => {
                 <ul className="space-y-2 text-slate-600 dark:text-slate-400">
                     {guidance.items.map((item) => (
                         <li key={item} className="flex items-start gap-3">
-                            <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-500" />
+                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
                             <span>{item}</span>
                         </li>
                     ))}

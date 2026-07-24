@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+    Link,
+    createSearchParams,
+    useNavigate,
+    useSearchParams,
+} from "react-router-dom";
 import {
     Menu,
     Search,
@@ -18,10 +23,12 @@ const Header = ({
 }) => {
     const navigate = useNavigate();
     const { logout } = useAuth();
+    const [searchParams] = useSearchParams();
 
     const userMenuRef = useRef(null);
+    const searchInputRef = useRef(null);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-    const [searchValue, setSearchValue] = useState("");
+    const [searchError, setSearchError] = useState("");
     const [theme, setTheme] = useState(() => {
         const saved = localStorage.getItem("cvms-theme");
         return saved === "dark" ? "dark" : "light";
@@ -78,6 +85,9 @@ const Header = ({
         en: {
             dashboard: "Dashboard",
             searchPlaceholder: "Search positions, CVs, discussions...",
+            searchTooShort: "Enter at least 2 characters.",
+            searchTooLong: "Search query cannot exceed 100 characters.",
+            searchSubmit: "Search",
             profile: "Profile",
             signOut: "Sign out",
             openUserMenu: "Open user menu",
@@ -87,6 +97,9 @@ const Header = ({
         bn: {
             dashboard: "ড্যাশবোর্ড",
             searchPlaceholder: "পজিশন, সিভি ও আলোচনা খুঁজুন...",
+            searchTooShort: "কমপক্ষে ২টি অক্ষর লিখুন।",
+            searchTooLong: "সার্চ সর্বোচ্চ ১০০ অক্ষরের হতে পারে।",
+            searchSubmit: "খুঁজুন",
             profile: "প্রোফাইল",
             signOut: "সাইন আউট",
             openUserMenu: "ব্যবহারকারী মেনু খুলুন",
@@ -140,6 +153,40 @@ const Header = ({
 
     const profilePath = getProfilePath();
 
+    const currentSearchQuery = searchParams.get("q")?.trim() || "";
+
+    const handleSearchSubmit = (event) => {
+        event.preventDefault();
+
+        const trimmedQuery = searchInputRef.current?.value.trim() || "";
+
+        if (trimmedQuery.length < 2) {
+            setSearchError(t.searchTooShort);
+            searchInputRef.current?.focus();
+            return;
+        }
+
+        if (trimmedQuery.length > 100) {
+            setSearchError(t.searchTooLong);
+            searchInputRef.current?.focus();
+            return;
+        }
+
+        setSearchError("");
+        setIsUserMenuOpen(false);
+
+        const nextSearchParams = createSearchParams({
+            q: trimmedQuery,
+            type: "all",
+            page: "1",
+        });
+
+        navigate({
+            pathname: "/search",
+            search: `?${nextSearchParams.toString()}`,
+        });
+    };
+
     useEffect(() => {
         localStorage.setItem("cvms-theme", theme);
         if (theme === "dark") {
@@ -169,11 +216,6 @@ const Header = ({
         };
     }, []);
 
-    const handleSearchSubmit = (event) => {
-        event.preventDefault();
-        // Search functionality will be implemented later
-    };
-
     return (
         <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
             {/* Mobile sidebar toggle */}
@@ -196,19 +238,46 @@ const Header = ({
                 <form
                     onSubmit={handleSearchSubmit}
                     className="relative hidden w-full max-w-md md:block"
+                    role="search"
                 >
                     <Search
                         className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                         aria-hidden="true"
                     />
                     <input
+                        key={currentSearchQuery}
+                        ref={searchInputRef}
                         type="search"
-                        value={searchValue}
-                        onChange={(e) => setSearchValue(e.target.value)}
+                        defaultValue={currentSearchQuery}
+                        maxLength={100}
+                        onChange={() => {
+                            if (searchError) {
+                                setSearchError("");
+                            }
+                        }}
                         placeholder={t.searchPlaceholder}
                         aria-label="Full-text search"
-                        className="w-full rounded-md border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500"
+                        aria-invalid={Boolean(searchError)}
+                        aria-describedby={searchError ? "header-search-error" : undefined}
+                        className="w-full rounded-md border border-slate-200 bg-slate-50 py-2 pl-9 pr-11 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500"
                     />
+                    <button
+                        type="submit"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 transition-colors hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-500 dark:hover:text-slate-300"
+                        aria-label={t.searchSubmit}
+                        title={t.searchSubmit}
+                    >
+                        <Search className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    {searchError && (
+                        <p
+                            id="header-search-error"
+                            className="absolute left-0 top-full mt-1 text-xs text-red-600 dark:text-red-400"
+                            role="alert"
+                        >
+                            {searchError}
+                        </p>
+                    )}
                 </form>
             </div>
 
