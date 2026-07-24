@@ -55,6 +55,7 @@ import GeneratedCVView from "../pages/candidate/cvs/GeneratedCVView";
 import Discussions from "../pages/discussions/Discussions";
 import CreateDiscussion from "../pages/discussions/CreateDiscussion";
 import DiscussionDetails from "../pages/discussions/DiscussionDetails";
+import EditProfile from "../pages/candidate/profile/EditProfile";
 
 const AppRoutes = () => {
     return (
@@ -288,6 +289,15 @@ const AppRoutes = () => {
                     element={
                         <ProtectedRoute allowedRoles={["CANDIDATE"]}>
                             <Profile />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/profile/edit"
+                    element={
+                        <ProtectedRoute allowedRoles={["CANDIDATE"]}>
+                            <EditProfile />
                         </ProtectedRoute>
                     }
                 />

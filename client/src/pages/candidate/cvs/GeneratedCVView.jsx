@@ -129,7 +129,7 @@ const GeneratedCVView = () => {
 
     if (loading) {
         return (
-            <div className="flex min-h-80items-center justify-center">
+            <div className="flex min-h-80 items-center justify-center">
                 <div className="text-center">
                     <FileText
                         className="w-12 h-12 text-blue-600 animate-pulse mx-auto mb-4"
