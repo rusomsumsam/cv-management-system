@@ -57,6 +57,33 @@ enum AttributeType {
   DROPDOWN
 }
 
+enum PositionAccessType {
+  PUBLIC
+  RESTRICTED
+}
+
+enum AccessRuleLogic {
+  ALL
+  ANY
+}
+
+enum AccessRuleOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  NOT_CONTAINS
+  GREATER_THAN
+  GREATER_THAN_OR_EQUAL
+  LESS_THAN
+  LESS_THAN_OR_EQUAL
+  BEFORE
+  ON_OR_BEFORE
+  AFTER
+  ON_OR_AFTER
+  IS_TRUE
+  IS_FALSE
+}
+
 model Attribute {
   id String @id @default(cuid())
 
@@ -66,37 +93,40 @@ model Attribute {
 
   type AttributeType
 
-  userAttributes     UserAttribute[]
-  positionAttributes PositionAttribute[]
+  userAttributes      UserAttribute[]
+  positionAttributes  PositionAttribute[]
+  positionAccessRules PositionAccessRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Position {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
   title       String
   description String?
 
-  company     String?
-  location    String?
-  department  String?
-  deadline    DateTime?
+  company    String?
+  location   String?
+  department String?
+  deadline   DateTime?
 
-  isActive    Boolean @default(true)
+  isActive        Boolean            @default(true)
+  accessType      PositionAccessType @default(PUBLIC)
+  accessRuleLogic AccessRuleLogic    @default(ALL)
 
   userId String
-  user   User @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 
   positionAttributes PositionAttribute[]
+  accessRules        PositionAccessRule[]
   cvs                CV[]
   discussions        Discussion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
 
 model UserAttribute {
   id String @id @default(cuid())
@@ -127,6 +157,27 @@ model PositionAttribute {
   createdAt DateTime @default(now())
 
   @@unique([positionId, attributeId])
+}
+
+model PositionAccessRule {
+  id String @id @default(cuid())
+
+  positionId  String
+  attributeId String
+
+  operator AccessRuleOperator
+
+  value String?
+
+  position  Position  @relation(fields: [positionId], references: [id])
+  attribute Attribute @relation(fields: [attributeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([positionId, attributeId])
+  @@index([positionId])
+  @@index([attributeId])
 }
 
 enum CVStatus {

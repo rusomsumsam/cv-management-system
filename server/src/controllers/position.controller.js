@@ -1,8 +1,27 @@
-const { PrismaClient } = require("@prisma/client");
+const { Prisma, PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
 // --- Helpers ---
+
+const getRequestRole = (req) => req.user?.role?.toUpperCase() || "";
+
+const isSupportedRole = (role) =>
+    ["CANDIDATE", "RECRUITER", "ADMIN"].includes(role);
+
+const getRequestBody = (req) => {
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+        return {};
+    }
+    return req.body;
+};
+
+const getValidId = (value) => {
+    if (typeof value !== "string") {
+        return "";
+    }
+    return value.trim();
+};
 
 const parseOptionalDate = (value) => {
     if (value === undefined) {
@@ -25,9 +44,26 @@ const parseOptionalDate = (value) => {
 
     const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
 
-    const parsedDate = dateOnlyPattern.test(normalizedValue)
-        ? new Date(`${normalizedValue}T00:00:00.000Z`)
-        : new Date(normalizedValue);
+    if (dateOnlyPattern.test(normalizedValue)) {
+        const parts = normalizedValue.split("-").map(Number);
+        const year = parts[0];
+        const month = parts[1] - 1;
+        const day = parts[2];
+
+        const parsedDate = new Date(Date.UTC(year, month, day));
+
+        if (
+            parsedDate.getUTCFullYear() !== year ||
+            parsedDate.getUTCMonth() !== month ||
+            parsedDate.getUTCDate() !== day
+        ) {
+            return { valid: false, value: undefined };
+        }
+
+        return { valid: true, value: parsedDate };
+    }
+
+    const parsedDate = new Date(normalizedValue);
 
     if (Number.isNaN(parsedDate.getTime())) {
         return { valid: false, value: undefined };
@@ -52,43 +88,89 @@ const parseOptionalBoolean = (value) => {
     return { valid: false, value: undefined };
 };
 
-const normalizeOptionalString = (value) => {
+const parseOptionalString = (value) => {
     if (value === undefined) {
-        return undefined;
+        return { valid: true, value: undefined };
     }
 
     if (value === null) {
-        return null;
+        return { valid: true, value: null };
     }
 
     if (typeof value !== "string") {
-        return undefined;
+        return { valid: false, value: undefined };
     }
 
     const normalizedValue = value.trim();
 
-    return normalizedValue || null;
+    return { valid: true, value: normalizedValue || null };
+};
+
+const handleServerError = (res, operation, error) => {
+    console.error(`Position ${operation} error:`, error.message);
+    return res.status(500).json({
+        success: false,
+        message: `Failed to ${operation} Position. Please try again.`,
+    });
+};
+
+const positionSelect = {
+    id: true,
+    title: true,
+    description: true,
+    company: true,
+    location: true,
+    department: true,
+    deadline: true,
+    isActive: true,
+    userId: true,
+    createdAt: true,
+    updatedAt: true,
+    user: {
+        select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+        },
+    },
+    _count: {
+        select: {
+            cvs: true,
+            positionAttributes: true,
+            discussions: true,
+        },
+    },
 };
 
 // --- Controllers ---
 
 const createPosition = async (req, res) => {
     try {
-        const {
-            title,
-            description,
-            company,
-            location,
-            department,
-            deadline,
-        } = req.body;
-
         if (!req.user?.id) {
             return res.status(401).json({
                 success: false,
                 message: "Authentication required.",
             });
         }
+
+        const role = getRequestRole(req);
+        if (!isSupportedRole(role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Unsupported role.",
+            });
+        }
+
+        if (role !== "RECRUITER") {
+            return res.status(403).json({
+                success: false,
+                message: "Only Recruiters can create Positions through this endpoint.",
+            });
+        }
+
+        const body = getRequestBody(req);
+        const { title, description, company, location, department, deadline } = body;
 
         if (!title || typeof title !== "string" || !title.trim()) {
             return res.status(400).json({
@@ -104,6 +186,30 @@ const createPosition = async (req, res) => {
             });
         }
 
+        const parsedDescription = parseOptionalString(description);
+        if (!parsedDescription.valid) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid description format.",
+            });
+        }
+
+        const parsedLocation = parseOptionalString(location);
+        if (!parsedLocation.valid) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid location format.",
+            });
+        }
+
+        const parsedDepartment = parseOptionalString(department);
+        if (!parsedDepartment.valid) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid department format.",
+            });
+        }
+
         const parsedDeadline = parseOptionalDate(deadline);
         if (!parsedDeadline.valid) {
             return res.status(400).json({
@@ -115,13 +221,14 @@ const createPosition = async (req, res) => {
         const position = await prisma.position.create({
             data: {
                 title: title.trim(),
-                description: normalizeOptionalString(description),
+                description: parsedDescription.value,
                 company: company.trim(),
-                location: normalizeOptionalString(location),
-                department: normalizeOptionalString(department),
+                location: parsedLocation.value,
+                department: parsedDepartment.value,
                 deadline: parsedDeadline.value ?? null,
                 userId: req.user.id,
             },
+            select: positionSelect,
         });
 
         return res.status(201).json({
@@ -129,30 +236,41 @@ const createPosition = async (req, res) => {
             data: position,
         });
     } catch (error) {
-        console.error("Failed to create position:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to create position.",
-        });
+        return handleServerError(res, "create", error);
     }
 };
 
 const getPositions = async (req, res) => {
     try {
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required.",
+            });
+        }
+
+        const role = getRequestRole(req);
+        if (!isSupportedRole(role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Unsupported role.",
+            });
+        }
+
+        let where = {};
+
+        if (role === "CANDIDATE") {
+            where = { isActive: true };
+        } else if (role === "RECRUITER") {
+            where = { userId: req.user.id };
+        } else if (role === "ADMIN") {
+            where = {};
+        }
+
         const positions = await prisma.position.findMany({
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                        email: true,
-                    },
-                },
-            },
-            orderBy: {
-                createdAt: "desc",
-            },
+            where,
+            select: positionSelect,
+            orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
         });
 
         return res.status(200).json({
@@ -160,35 +278,54 @@ const getPositions = async (req, res) => {
             data: positions,
         });
     } catch (error) {
-        console.error("Failed to load positions:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to load positions.",
-        });
+        return handleServerError(res, "load", error);
     }
 };
 
 const getPositionById = async (req, res) => {
     try {
-        const position = await prisma.position.findUnique({
-            where: {
-                id: req.params.id,
-            },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
-                    },
-                },
-            },
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required.",
+            });
+        }
+
+        const role = getRequestRole(req);
+        if (!isSupportedRole(role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Unsupported role.",
+            });
+        }
+
+        const id = getValidId(req.params.id);
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Position ID is required.",
+            });
+        }
+
+        let where = { id };
+
+        if (role === "CANDIDATE") {
+            where = { id, isActive: true };
+        } else if (role === "RECRUITER") {
+            where = { id, userId: req.user.id };
+        } else if (role === "ADMIN") {
+            where = { id };
+        }
+
+        const position = await prisma.position.findFirst({
+            where,
+            select: positionSelect,
         });
 
         if (!position) {
             return res.status(404).json({
                 success: false,
-                message: "Position not found",
+                message: "Position not found.",
             });
         }
 
@@ -197,18 +334,62 @@ const getPositionById = async (req, res) => {
             data: position,
         });
     } catch (error) {
-        console.error("Failed to load position details:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to load position details.",
-        });
+        return handleServerError(res, "load", error);
     }
 };
 
 const updatePosition = async (req, res) => {
     try {
-        const { id } = req.params;
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required.",
+            });
+        }
 
+        const role = getRequestRole(req);
+        if (!isSupportedRole(role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Unsupported role.",
+            });
+        }
+
+        if (role !== "RECRUITER" && role !== "ADMIN") {
+            return res.status(403).json({
+                success: false,
+                message: "You are not authorized to update this Position.",
+            });
+        }
+
+        const id = getValidId(req.params.id);
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Position ID is required.",
+            });
+        }
+
+        let where = { id };
+
+        if (role === "RECRUITER") {
+            where = { id, userId: req.user.id };
+        } else if (role === "ADMIN") {
+            where = { id };
+        }
+
+        const existingPosition = await prisma.position.findFirst({
+            where,
+        });
+
+        if (!existingPosition) {
+            return res.status(404).json({
+                success: false,
+                message: "Position not found.",
+            });
+        }
+
+        const body = getRequestBody(req);
         const {
             title,
             description,
@@ -217,18 +398,7 @@ const updatePosition = async (req, res) => {
             department,
             deadline,
             isActive,
-        } = req.body;
-
-        const existingPosition = await prisma.position.findUnique({
-            where: { id },
-        });
-
-        if (!existingPosition) {
-            return res.status(404).json({
-                success: false,
-                message: "Position not found",
-            });
-        }
+        } = body;
 
         const updateData = {};
 
@@ -253,36 +423,36 @@ const updatePosition = async (req, res) => {
         }
 
         if (description !== undefined) {
-            const normalizedDescription = normalizeOptionalString(description);
-            if (normalizedDescription === undefined) {
+            const parsedDescription = parseOptionalString(description);
+            if (!parsedDescription.valid) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid description format.",
                 });
             }
-            updateData.description = normalizedDescription;
+            updateData.description = parsedDescription.value;
         }
 
         if (location !== undefined) {
-            const normalizedLocation = normalizeOptionalString(location);
-            if (normalizedLocation === undefined) {
+            const parsedLocation = parseOptionalString(location);
+            if (!parsedLocation.valid) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid location format.",
                 });
             }
-            updateData.location = normalizedLocation;
+            updateData.location = parsedLocation.value;
         }
 
         if (department !== undefined) {
-            const normalizedDepartment = normalizeOptionalString(department);
-            if (normalizedDepartment === undefined) {
+            const parsedDepartment = parseOptionalString(department);
+            if (!parsedDepartment.valid) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid department format.",
                 });
             }
-            updateData.department = normalizedDepartment;
+            updateData.department = parsedDepartment.value;
         }
 
         if (deadline !== undefined) {
@@ -315,8 +485,9 @@ const updatePosition = async (req, res) => {
         }
 
         const updatedPosition = await prisma.position.update({
-            where: { id },
+            where: { id: existingPosition.id },
             data: updateData,
+            select: positionSelect,
         });
 
         return res.status(200).json({
@@ -324,43 +495,84 @@ const updatePosition = async (req, res) => {
             data: updatedPosition,
         });
     } catch (error) {
-        console.error("Failed to update position:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to update position.",
-        });
+        return handleServerError(res, "update", error);
     }
 };
 
 const deletePosition = async (req, res) => {
     try {
-        const { id } = req.params;
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required.",
+            });
+        }
 
-        const position = await prisma.position.findUnique({
-            where: { id },
+        const role = getRequestRole(req);
+        if (!isSupportedRole(role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Unsupported role.",
+            });
+        }
+
+        if (role !== "RECRUITER" && role !== "ADMIN") {
+            return res.status(403).json({
+                success: false,
+                message: "You are not authorized to delete this Position.",
+            });
+        }
+
+        const id = getValidId(req.params.id);
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Position ID is required.",
+            });
+        }
+
+        let where = { id };
+
+        if (role === "RECRUITER") {
+            where = { id, userId: req.user.id };
+        } else if (role === "ADMIN") {
+            where = { id };
+        }
+
+        const position = await prisma.position.findFirst({
+            where,
         });
 
         if (!position) {
             return res.status(404).json({
                 success: false,
-                message: "Position not found",
+                message: "Position not found.",
             });
         }
 
-        await prisma.position.delete({
-            where: { id },
-        });
+        try {
+            await prisma.position.delete({
+                where: { id: position.id },
+            });
+        } catch (deleteError) {
+            if (
+                deleteError instanceof Prisma.PrismaClientKnownRequestError &&
+                ["P2003", "P2014"].includes(deleteError.code)
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    message: "This Position cannot be deleted because related records still exist.",
+                });
+            }
+            throw deleteError;
+        }
 
         return res.status(200).json({
             success: true,
             message: "Position deleted successfully",
         });
     } catch (error) {
-        console.error("Failed to delete position:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to delete position.",
-        });
+        return handleServerError(res, "delete", error);
     }
 };
 

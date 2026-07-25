@@ -8,14 +8,13 @@ const {
     deletePosition,
 } = require("../controllers/position.controller");
 
-
 const authMiddleware = require("../middlewares/auth.middleware");
 const authorizeRoles = require("../middlewares/authorize.middleware");
 
 router.post(
     "/",
     authMiddleware,
-    authorizeRoles("RECRUITER", "ADMIN"),
+    authorizeRoles("RECRUITER"),
     createPosition
 );
 
