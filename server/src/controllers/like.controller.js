@@ -1,16 +1,37 @@
 const { PrismaClient, Prisma } = require("@prisma/client");
+const {
+    evaluatePositionEligibility,
+    loadAndEvaluatePositionEligibility,
+} = require("../services/positionEligibility.service");
 
 const prisma = new PrismaClient();
 
 // --- Helpers ---
 
+const getRequestRole = (req) => req.user?.role?.toUpperCase() || "";
+
 const isAuthenticated = (req) => {
-    return req.user && req.user.id && typeof req.user.id === "string";
+    return typeof req.user?.id === "string" && req.user.id.trim() !== "";
 };
 
 const isRecruiter = (req) => {
-    return req.user && req.user.role === "RECRUITER";
+    return getRequestRole(req) === "RECRUITER";
 };
+
+const getValidId = (value) => {
+    if (typeof value !== "string") {
+        return "";
+    }
+    return value.trim();
+};
+
+class LikeRequestError extends Error {
+    constructor(statusCode, message) {
+        super(message);
+        this.name = "LikeRequestError";
+        this.statusCode = statusCode;
+    }
+}
 
 const findVisiblePublishedCV = async (client, cvId) => {
     return client.cV.findFirst({
@@ -23,6 +44,8 @@ const findVisiblePublishedCV = async (client, cvId) => {
         },
         select: {
             id: true,
+            userId: true,
+            positionId: true,
         },
     });
 };
@@ -48,30 +71,42 @@ const createLike = async (req, res) => {
         }
 
         // 3. Read and validate cvId from params
-        const cvId = req.params.cvId;
-        if (typeof cvId !== "string" || cvId.trim() === "") {
+        const cvId = getValidId(req.params.cvId);
+        if (!cvId) {
             return res.status(400).json({
                 success: false,
                 message: "CV ID is required.",
             });
         }
 
-        const trimmedCvId = cvId.trim();
-
-        // 4. Transaction: verify visible CV, create like, count likes
+        // 4. Transaction: verify visible CV, check eligibility, create like, count likes
         try {
             const result = await prisma.$transaction(async (tx) => {
-                // Verify the CV is published and active
-                const cv = await findVisiblePublishedCV(tx, trimmedCvId);
+                // Verify the CV is published, active, and get Candidate ID
+                const cv = await findVisiblePublishedCV(tx, cvId);
                 if (!cv) {
-                    throw new Error("CV_NOT_FOUND");
+                    throw new LikeRequestError(404, "CV not found.");
+                }
+
+                // Evaluate Candidate's current Position eligibility
+                const eligibilityResult = await loadAndEvaluatePositionEligibility(
+                    tx,
+                    cv.positionId,
+                    cv.userId
+                );
+
+                if (
+                    !eligibilityResult.position ||
+                    eligibilityResult.eligibility?.eligible !== true
+                ) {
+                    throw new LikeRequestError(404, "CV not found.");
                 }
 
                 // Attempt to create the like
                 await tx.like.create({
                     data: {
                         userId: req.user.id,
-                        cvId: trimmedCvId,
+                        cvId: cv.id,
                     },
                     select: {
                         id: true,
@@ -81,18 +116,18 @@ const createLike = async (req, res) => {
                 // Count total likes for this CV
                 const likesCount = await tx.like.count({
                     where: {
-                        cvId: trimmedCvId,
+                        cvId: cv.id,
                     },
                 });
 
-                return { likesCount };
+                return { cvId: cv.id, likesCount };
             });
 
             return res.status(201).json({
                 success: true,
                 message: "CV liked successfully.",
                 data: {
-                    cvId: trimmedCvId,
+                    cvId: result.cvId,
                     likedByCurrentUser: true,
                     likesCount: result.likesCount,
                 },
@@ -103,36 +138,67 @@ const createLike = async (req, res) => {
                 txError instanceof Prisma.PrismaClientKnownRequestError &&
                 txError.code === "P2002"
             ) {
-                // Idempotent: CV is already liked, return current state
-                const likesCount = await prisma.like.count({
-                    where: {
-                        cvId: trimmedCvId,
-                    },
-                });
+                // Revalidate visibility and eligibility before returning current state
+                try {
+                    const result = await prisma.$transaction(async (tx) => {
+                        const cv = await findVisiblePublishedCV(tx, cvId);
+                        if (!cv) {
+                            throw new LikeRequestError(404, "CV not found.");
+                        }
 
-                return res.status(200).json({
-                    success: true,
-                    message: "CV is already liked.",
-                    data: {
-                        cvId: trimmedCvId,
-                        likedByCurrentUser: true,
-                        likesCount,
-                    },
-                });
+                        const eligibilityResult = await loadAndEvaluatePositionEligibility(
+                            tx,
+                            cv.positionId,
+                            cv.userId
+                        );
+
+                        if (
+                            !eligibilityResult.position ||
+                            eligibilityResult.eligibility?.eligible !== true
+                        ) {
+                            throw new LikeRequestError(404, "CV not found.");
+                        }
+
+                        const likesCount = await tx.like.count({
+                            where: {
+                                cvId: cv.id,
+                            },
+                        });
+
+                        return { cvId: cv.id, likesCount };
+                    });
+
+                    return res.status(200).json({
+                        success: true,
+                        message: "CV is already liked.",
+                        data: {
+                            cvId: result.cvId,
+                            likedByCurrentUser: true,
+                            likesCount: result.likesCount,
+                        },
+                    });
+                } catch (revalidateError) {
+                    if (revalidateError instanceof LikeRequestError) {
+                        return res.status(revalidateError.statusCode).json({
+                            success: false,
+                            message: revalidateError.message,
+                        });
+                    }
+                    throw revalidateError;
+                }
             }
 
-            // Re-throw known custom errors
-            if (txError.message === "CV_NOT_FOUND") {
-                return res.status(404).json({
+            if (txError instanceof LikeRequestError) {
+                return res.status(txError.statusCode).json({
                     success: false,
-                    message: "Published CV not found.",
+                    message: txError.message,
                 });
             }
 
             throw txError;
         }
     } catch (error) {
-        console.error("Failed to create like:", error.message);
+        console.error("Like create error:", error.message);
         return res.status(500).json({
             success: false,
             message: "Internal server error.",
@@ -158,7 +224,7 @@ const getLikes = async (req, res) => {
             });
         }
 
-        // 3. Fetch only the authenticated recruiter's likes for visible CVs
+        // 3. Fetch only the authenticated recruiter's likes for visible CVs with eligibility data
         const likes = await prisma.like.findMany({
             where: {
                 userId: req.user.id,
@@ -176,6 +242,7 @@ const getLikes = async (req, res) => {
                 cv: {
                     select: {
                         id: true,
+                        userId: true,
                         fullName: true,
                         status: true,
                         position: {
@@ -184,6 +251,32 @@ const getLikes = async (req, res) => {
                                 title: true,
                                 company: true,
                                 isActive: true,
+                                accessType: true,
+                                accessRuleLogic: true,
+                                accessRules: {
+                                    select: {
+                                        id: true,
+                                        attributeId: true,
+                                        operator: true,
+                                        value: true,
+                                        attribute: {
+                                            select: {
+                                                id: true,
+                                                name: true,
+                                                category: true,
+                                                type: true,
+                                            },
+                                        },
+                                    },
+                                    orderBy: [
+                                        {
+                                            createdAt: "asc",
+                                        },
+                                        {
+                                            id: "asc",
+                                        },
+                                    ],
+                                },
                             },
                         },
                         _count: {
@@ -199,12 +292,87 @@ const getLikes = async (req, res) => {
             },
         });
 
+        // 4. Collect unique Candidate IDs
+        const candidateUserIds = [
+            ...new Set(
+                likes.map((like) => like.cv?.userId).filter(Boolean)
+            ),
+        ];
+
+        // 5. Collect unique rule attribute IDs across all positions
+        const ruleAttributeIds = [
+            ...new Set(
+                likes.flatMap((like) => {
+                    const rules = Array.isArray(like.cv?.position?.accessRules)
+                        ? like.cv.position.accessRules
+                        : [];
+                    return rules.map((rule) => rule.attributeId).filter(Boolean);
+                })
+            ),
+        ];
+
+        // 6. Load all relevant Candidate UserAttributes in one bulk query
+        let userAttributes = [];
+        if (candidateUserIds.length > 0 && ruleAttributeIds.length > 0) {
+            userAttributes = await prisma.userAttribute.findMany({
+                where: {
+                    userId: {
+                        in: candidateUserIds,
+                    },
+                    attributeId: {
+                        in: ruleAttributeIds,
+                    },
+                },
+                select: {
+                    userId: true,
+                    attributeId: true,
+                    value: true,
+                },
+            });
+        }
+
+        // 7. Group UserAttributes by Candidate ID
+        const userAttributesByCandidate = new Map();
+        for (const ua of userAttributes) {
+            const current = userAttributesByCandidate.get(ua.userId) || [];
+            current.push({
+                attributeId: ua.attributeId,
+                value: ua.value,
+            });
+            userAttributesByCandidate.set(ua.userId, current);
+        }
+
+        // 8. Filter Likes by eligibility
+        const visibleLikes = likes
+            .map((like) => {
+                const candidateAttributes = userAttributesByCandidate.get(like.cv.userId) || [];
+                const eligibility = evaluatePositionEligibility(
+                    like.cv.position,
+                    candidateAttributes
+                );
+
+                const { accessRules, ...cleanPosition } = like.cv.position;
+
+                return {
+                    like: {
+                        ...like,
+                        cv: {
+                            ...like.cv,
+                            position: cleanPosition,
+                        },
+                    },
+                    eligible: eligibility.eligible === true,
+                };
+            })
+            .filter((item) => item.eligible)
+            .map((item) => item.like);
+
         return res.status(200).json({
             success: true,
-            data: likes,
+            data: visibleLikes,
         });
     } catch (error) {
-        console.error("Failed to get likes:", error.message);
+        console.error("Like load error:", error.message);
         return res.status(500).json({
             success: false,
             message: "Internal server error.",
@@ -231,65 +399,76 @@ const deleteLike = async (req, res) => {
         }
 
         // 3. Read and validate cvId from params
-        const cvId = req.params.cvId;
-        if (typeof cvId !== "string" || cvId.trim() === "") {
+        const cvId = getValidId(req.params.cvId);
+        if (!cvId) {
             return res.status(400).json({
                 success: false,
                 message: "CV ID is required.",
             });
         }
 
-        const trimmedCvId = cvId.trim();
-
-        // 4. Transaction: verify visible CV, delete like, count likes
+        // 4. Transaction: verify visible CV, check eligibility, delete like, count likes
         try {
             const result = await prisma.$transaction(async (tx) => {
-                // Verify the CV is still published and active (defensive)
-                const cv = await findVisiblePublishedCV(tx, trimmedCvId);
+                // Verify the CV is published, active, and get Candidate ID
+                const cv = await findVisiblePublishedCV(tx, cvId);
                 if (!cv) {
-                    throw new Error("CV_NOT_FOUND");
+                    throw new LikeRequestError(404, "CV not found.");
+                }
+
+                // Evaluate Candidate's current Position eligibility
+                const eligibilityResult = await loadAndEvaluatePositionEligibility(
+                    tx,
+                    cv.positionId,
+                    cv.userId
+                );
+
+                if (
+                    !eligibilityResult.position ||
+                    eligibilityResult.eligibility?.eligible !== true
+                ) {
+                    throw new LikeRequestError(404, "CV not found.");
                 }
 
                 // Delete only the authenticated recruiter's like (deleteMany is idempotent)
                 const deleted = await tx.like.deleteMany({
                     where: {
                         userId: req.user.id,
-                        cvId: trimmedCvId,
+                        cvId: cv.id,
                     },
                 });
 
                 // Count total likes for this CV
                 const likesCount = await tx.like.count({
                     where: {
-                        cvId: trimmedCvId,
+                        cvId: cv.id,
                     },
                 });
 
-                return { deleted, likesCount };
+                return { deleted, cvId: cv.id, likesCount };
             });
 
-            // Determine response message based on whether a like was actually removed
             const wasLiked = result.deleted.count > 0;
             return res.status(200).json({
                 success: true,
                 message: wasLiked ? "CV unliked successfully." : "CV was not liked.",
                 data: {
-                    cvId: trimmedCvId,
+                    cvId: result.cvId,
                     likedByCurrentUser: false,
                     likesCount: result.likesCount,
                 },
             });
         } catch (txError) {
-            if (txError.message === "CV_NOT_FOUND") {
-                return res.status(404).json({
+            if (txError instanceof LikeRequestError) {
+                return res.status(txError.statusCode).json({
                     success: false,
-                    message: "Published CV not found.",
+                    message: txError.message,
                 });
             }
             throw txError;
         }
     } catch (error) {
-        console.error("Failed to delete like:", error.message);
+        console.error("Like delete error:", error.message);
         return res.status(500).json({
             success: false,
             message: "Internal server error.",
