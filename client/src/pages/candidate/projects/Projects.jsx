@@ -1,3 +1,4 @@
+// client/src/pages/candidate/projects/Projects.jsx
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -9,9 +10,65 @@ import {
     Pencil,
     Trash2,
     AlertCircle,
-    RefreshCw,
+    RefreshCw
 } from "lucide-react";
 import api from "../../../api/axios";
+
+// --- Helpers ---
+
+const getDateOnlyValue = (value) => {
+    if (!value) return "";
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+        return value.slice(0, 10);
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toISOString().slice(0, 10);
+};
+
+const formatDateOnly = (value) => {
+    const dateOnly = getDateOnlyValue(value);
+    if (!dateOnly) return "N/A";
+    const [year, month, day] = dateOnly.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(date.getTime())) return "N/A";
+    return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+    }).format(date);
+};
+
+const formatTimestamp = (value) => {
+    if (!value) return "N/A";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "N/A";
+    return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+    });
+};
+
+const formatProjectPeriod = (project) => {
+    const start = formatDateOnly(project?.startDate);
+    if (project?.isOngoing === true) {
+        return start === "N/A" ? "Ongoing" : `${start} – Present`;
+    }
+    const end = formatDateOnly(project?.endDate);
+    if (start === "N/A" && end === "N/A") return "Not specified";
+    if (start === "N/A") return `Until ${end}`;
+    if (end === "N/A") return `From ${start}`;
+    return `${start} – ${end}`;
+};
+
+const getProjectTags = (project) => {
+    if (!Array.isArray(project?.projectTags)) return [];
+    return project.projectTags
+        .map((projectTag) => projectTag?.tag)
+        .filter((tag) => tag && typeof tag.name === "string" && tag.name.trim());
+};
 
 const Projects = () => {
     const navigate = useNavigate();
@@ -32,7 +89,6 @@ const Projects = () => {
         api.get("/projects")
             .then((response) => {
                 if (cancelled) return;
-
                 const data = response.data?.data;
                 setProjects(Array.isArray(data) ? data : []);
                 setSelectedProjectId("");
@@ -40,17 +96,13 @@ const Projects = () => {
             })
             .catch((requestError) => {
                 if (cancelled) return;
-
                 setProjects([]);
                 setSelectedProjectId("");
                 setError(
                     requestError.response?.data?.message ||
                     "Failed to load projects. Please try again."
                 );
-                console.error(
-                    "Failed to load Projects:",
-                    requestError.message
-                );
+                console.error("Failed to load Projects:", requestError.message);
             })
             .finally(() => {
                 if (!cancelled) {
@@ -76,8 +128,7 @@ const Projects = () => {
         setDeleteError("");
     };
 
-    const selectedProject =
-        projects.find((project) => project.id === selectedProjectId) || null;
+    const selectedProject = projects.find((project) => project.id === selectedProjectId) || null;
 
     const handleEditSelected = () => {
         if (!selectedProject) return;
@@ -100,9 +151,7 @@ const Projects = () => {
             await api.delete(`/projects/${selectedProject.id}`);
 
             setProjects((currentProjects) =>
-                currentProjects.filter(
-                    (project) => project.id !== selectedProject.id
-                )
+                currentProjects.filter((project) => project.id !== selectedProject.id)
             );
             setSelectedProjectId("");
             setIsDeleteDialogOpen(false);
@@ -111,10 +160,7 @@ const Projects = () => {
                 requestError.response?.data?.message ||
                 "Failed to delete project. Please try again."
             );
-            console.error(
-                "Failed to delete Project:",
-                requestError.message
-            );
+            console.error("Failed to delete Project:", requestError.message);
         } finally {
             setDeleting(false);
         }
@@ -126,26 +172,33 @@ const Projects = () => {
         setIsDeleteDialogOpen(false);
     };
 
-    const formatDate = (dateString) => {
-        if (!dateString) return "N/A";
+    const handleSearchChange = (event) => {
+        setSearchTerm(event.target.value);
+        setSelectedProjectId("");
+        setDeleteError("");
+    };
 
-        const date = new Date(dateString);
-        if (Number.isNaN(date.getTime())) return "N/A";
-
-        return date.toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-        });
+    const handleClearSearch = () => {
+        setSearchTerm("");
+        setSelectedProjectId("");
+        setDeleteError("");
     };
 
     const normalizedSearchTerm = searchTerm.trim().toLowerCase();
     const filteredProjects = projects.filter((project) => {
         if (!normalizedSearchTerm) return true;
 
-        return (
-            project.title?.toLowerCase().includes(normalizedSearchTerm) ||
-            project.description?.toLowerCase().includes(normalizedSearchTerm)
+        const projectTags = getProjectTags(project);
+        const searchableValues = [
+            project.title,
+            project.description,
+            formatProjectPeriod(project),
+            project.isOngoing ? "ongoing present" : "",
+            ...projectTags.map((tag) => tag.name),
+        ];
+
+        return searchableValues.some(
+            (value) => typeof value === "string" && value.toLowerCase().includes(normalizedSearchTerm)
         );
     });
 
@@ -165,9 +218,7 @@ const Projects = () => {
             <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                            My Projects
-                        </h1>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">My Projects</h1>
                         <p className="text-slate-600 dark:text-slate-400 mt-1">
                             Manage Projects used across your generated CVs.
                         </p>
@@ -183,12 +234,8 @@ const Projects = () => {
                             <AlertCircle className="h-5 w-5" aria-hidden="true" />
                         </div>
                         <div className="flex-1">
-                            <h3 className="text-sm font-medium text-red-700 dark:text-red-400">
-                                Error loading projects
-                            </h3>
-                            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                                {error}
-                            </p>
+                            <h3 className="text-sm font-medium text-red-700 dark:text-red-400">Error loading projects</h3>
+                            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{error}</p>
                             <button
                                 type="button"
                                 onClick={handleRetry}
@@ -209,18 +256,14 @@ const Projects = () => {
             {/* Page Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                        My Projects
-                    </h1>
+                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">My Projects</h1>
                     <p className="text-slate-600 dark:text-slate-400 mt-1">
                         Manage Projects used across your generated CVs.
                     </p>
                 </div>
                 <div className="flex items-center gap-4">
                     <span className="text-sm text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {projects.length === 1
-                            ? "1 project"
-                            : `${projects.length} projects`}
+                        {projects.length === 1 ? "1 project" : `${projects.length} projects`}
                     </span>
                     <button
                         type="button"
@@ -243,9 +286,9 @@ const Projects = () => {
                     <input
                         type="search"
                         aria-label="Search projects"
-                        placeholder="Search by title or description..."
+                        placeholder="Search by title, description, period, or Technology Tag..."
                         value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
+                        onChange={handleSearchChange}
                         className="w-full rounded-md border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-500 dark:focus:ring-blue-500"
                     />
                 </div>
@@ -269,7 +312,7 @@ const Projects = () => {
                     <button
                         type="button"
                         onClick={handleEditSelected}
-                        disabled={!selectedProject}
+                        disabled={!selectedProject || deleting || isDeleteDialogOpen}
                         className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900"
                     >
                         <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
@@ -278,7 +321,7 @@ const Projects = () => {
                     <button
                         type="button"
                         onClick={handleOpenDeleteDialog}
-                        disabled={!selectedProject}
+                        disabled={!selectedProject || deleting || isDeleteDialogOpen}
                         className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-700 dark:hover:bg-red-600 dark:focus:ring-offset-slate-900"
                     >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -291,9 +334,7 @@ const Projects = () => {
             {projects.length === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-slate-900">
                     <FolderKanban className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                    <h3 className="mt-4 text-sm font-medium text-slate-900 dark:text-white">
-                        No projects added yet
-                    </h3>
+                    <h3 className="mt-4 text-sm font-medium text-slate-900 dark:text-white">No projects added yet</h3>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                         Create a Project to showcase your work in generated CVs.
                     </p>
@@ -308,15 +349,11 @@ const Projects = () => {
                 </div>
             ) : filteredProjects.length === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-slate-900">
-                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">
-                        No matching projects found
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                        Try a different search term.
-                    </p>
+                    <h3 className="text-sm font-medium text-slate-900 dark:text-white">No matching projects found</h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Try a different search term.</p>
                     <button
                         type="button"
-                        onClick={() => setSearchTerm("")}
+                        onClick={handleClearSearch}
                         className="mt-3 inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-900"
                     >
                         Clear Search
@@ -335,10 +372,13 @@ const Projects = () => {
                                         Project
                                     </th>
                                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        Description
+                                        Period
                                     </th>
                                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
-                                        Created
+                                        Status
+                                    </th>
+                                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        Technology Tags
                                     </th>
                                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
                                         Updated
@@ -348,13 +388,14 @@ const Projects = () => {
                             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                                 {filteredProjects.map((project) => {
                                     const isSelected = selectedProjectId === project.id;
+                                    const projectTags = getProjectTags(project);
+                                    const displayTags = projectTags.slice(0, 3);
+                                    const remainingTags = projectTags.length - 3;
 
                                     return (
                                         <tr
                                             key={project.id}
-                                            className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${isSelected
-                                                    ? "bg-blue-50 dark:bg-blue-900/10"
-                                                    : ""
+                                            className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${isSelected ? "bg-blue-50 dark:bg-blue-900/10" : ""
                                                 }`}
                                         >
                                             <td className="px-4 py-3">
@@ -363,6 +404,7 @@ const Projects = () => {
                                                     aria-label={`Select project ${project.title || "Untitled Project"}`}
                                                     checked={isSelected}
                                                     onChange={() => handleSelectProject(project.id)}
+                                                    disabled={deleting || isDeleteDialogOpen}
                                                     className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 dark:border-slate-600 dark:bg-slate-800 dark:focus:ring-blue-500"
                                                 />
                                             </td>
@@ -371,27 +413,67 @@ const Projects = () => {
                                                     <div className="bg-blue-50 text-blue-600 p-1.5 rounded-lg dark:bg-blue-900/30 dark:text-blue-400">
                                                         <FolderKanban className="h-4 w-4" aria-hidden="true" />
                                                     </div>
-                                                    <Link
-                                                        to={`/projects/${project.id}`}
-                                                        className="text-sm font-medium text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 rounded dark:text-blue-400 dark:focus:ring-offset-slate-900"
-                                                    >
-                                                        {project.title || "Untitled Project"}
-                                                    </Link>
+                                                    <div>
+                                                        <Link
+                                                            to={`/projects/${project.id}`}
+                                                            className="text-sm font-medium text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 rounded dark:text-blue-400 dark:focus:ring-offset-slate-900"
+                                                        >
+                                                            {project.title || "Untitled Project"}
+                                                        </Link>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-xs">
+                                                            {project.description?.trim()
+                                                                ? project.description
+                                                                : "No description provided."}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300 max-w-md truncate">
-                                                {project.description || "No description provided."}
                                             </td>
                                             <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                                                 <div className="flex items-center gap-2">
                                                     <CalendarDays className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                                                    {formatDate(project.createdAt)}
+                                                    {formatProjectPeriod(project)}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span
+                                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${project.isOngoing
+                                                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                                            : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                                        }`}
+                                                >
+                                                    {project.isOngoing ? "Ongoing" : "Completed"}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {projectTags.length === 0 ? (
+                                                        <span className="text-sm text-slate-500 dark:text-slate-400 italic">No Tags</span>
+                                                    ) : (
+                                                        <>
+                                                            {displayTags.map((tag) => (
+                                                                <span
+                                                                    key={tag.id}
+                                                                    className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800/50"
+                                                                >
+                                                                    {tag.name}
+                                                                </span>
+                                                            ))}
+                                                            {remainingTags > 0 && (
+                                                                <span
+                                                                    className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-400"
+                                                                    title={`${remainingTags} more tag${remainingTags > 1 ? "s" : ""}`}
+                                                                >
+                                                                    +{remainingTags}
+                                                                </span>
+                                                            )}
+                                                        </>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                                                 <div className="flex items-center gap-2">
                                                     <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                                                    {formatDate(project.updatedAt)}
+                                                    {formatTimestamp(project.updatedAt)}
                                                 </div>
                                             </td>
                                         </tr>

@@ -12,6 +12,7 @@ const projectRoutes = require("./project.route");
 const discussionRoutes = require("./discussion.route");
 const likeRoutes = require("./like.route");
 const searchRoutes = require("./search.route");
+const tagRoutes = require("./tag.route");
 
 
 router.get("/", (req, res) => {
@@ -34,6 +35,7 @@ router.use("/position-attributes", positionAttributeRoutes);
 router.use("/positions", positionAccessRuleRoutes);
 router.use("/profile", profileRoutes);
 router.use("/projects", projectRoutes);
+router.use("/tags", tagRoutes);
 router.use("/discussions", discussionRoutes);
 router.use("/likes", likeRoutes);
 router.use("/search", searchRoutes);
