@@ -12,7 +12,9 @@ import {
     ExternalLink,
     Users,
     X,
-    ListChecks
+    ListChecks,
+    Copy,
+    Shield,
 } from "lucide-react";
 import api from "../../../api/axios";
 
@@ -43,6 +45,82 @@ const getPositionOwnerName = (position) => {
     return name || "Unknown";
 };
 
+const safeMaxProjects = (value) => {
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= 10) {
+        return value;
+    }
+    return 4;
+};
+
+const extractTagNames = (position) => {
+    if (
+        !position ||
+        typeof position !== "object" ||
+        !Array.isArray(position.positionTags)
+    ) {
+        return [];
+    }
+
+    const names = [];
+    const seen = new Set();
+
+    for (const positionTag of position.positionTags) {
+        const rawName = positionTag?.tag?.name;
+
+        if (typeof rawName !== "string") {
+            continue;
+        }
+
+        const name = rawName.trim();
+
+        if (!name) {
+            continue;
+        }
+
+        const normalizedName = name.toLowerCase();
+
+        if (seen.has(normalizedName)) {
+            continue;
+        }
+
+        seen.add(normalizedName);
+        names.push(name);
+    }
+
+    return names;
+};
+
+const safeVersion = (value) => {
+    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+        return value;
+    }
+    return 1;
+};
+
+const getAccessTypePresentation = (accessType) => {
+    if (accessType === "PUBLIC") {
+        return {
+            label: "Public",
+            className:
+                "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+        };
+    }
+
+    if (accessType === "RESTRICTED") {
+        return {
+            label: "Restricted",
+            className:
+                "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+        };
+    }
+
+    return {
+        label: "N/A",
+        className:
+            "bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300",
+    };
+};
+
 const RecruiterPositionDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -60,6 +138,10 @@ const RecruiterPositionDetails = () => {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [deleteError, setDeleteError] = useState("");
+
+    // Duplicate state
+    const [duplicatingPosition, setDuplicatingPosition] = useState(false);
+    const [duplicatePositionError, setDuplicatePositionError] = useState("");
 
     useEffect(() => {
         let cancelled = false;
@@ -97,6 +179,7 @@ const RecruiterPositionDetails = () => {
                 setLikeError("");
                 setLikeMessage("");
                 setDeleteError("");
+                setDuplicatePositionError("");
             })
             .catch((requestError) => {
                 if (cancelled) return;
@@ -127,6 +210,7 @@ const RecruiterPositionDetails = () => {
         setLikeError("");
         setLikeMessage("");
         setDeleteError("");
+        setDuplicatePositionError("");
         setRetryCounter((prev) => prev + 1);
     };
 
@@ -202,8 +286,9 @@ const RecruiterPositionDetails = () => {
     };
 
     const openDeleteDialog = () => {
-        if (deleting) return;
+        if (deleting || duplicatingPosition) return;
         setDeleteError("");
+        setDuplicatePositionError("");
         setDeleteDialogOpen(true);
     };
 
@@ -213,7 +298,7 @@ const RecruiterPositionDetails = () => {
     };
 
     const handleDelete = async () => {
-        if (!position || deleting) return;
+        if (!position || deleting || duplicatingPosition) return;
 
         try {
             setDeleting(true);
@@ -228,6 +313,37 @@ const RecruiterPositionDetails = () => {
             console.error("Failed to delete Position:", requestError.message);
         } finally {
             setDeleting(false);
+        }
+    };
+
+    const handleDuplicate = async () => {
+        if (!position || duplicatingPosition || deleting) return;
+
+        try {
+            setDuplicatingPosition(true);
+            setDuplicatePositionError("");
+
+            const response = await api.post(`/positions/${id}/duplicate`);
+            const duplicatedData = response.data?.data;
+
+            if (
+                !duplicatedData ||
+                typeof duplicatedData !== "object" ||
+                typeof duplicatedData.id !== "string" ||
+                !duplicatedData.id.trim()
+            ) {
+                throw new Error("Duplicate response is invalid.");
+            }
+
+            navigate(`/positions/${duplicatedData.id.trim()}`);
+        } catch (requestError) {
+            setDuplicatePositionError(
+                requestError.response?.data?.message ||
+                "Failed to duplicate Position. Please try again."
+            );
+            console.error("Failed to duplicate Position:", requestError.message);
+        } finally {
+            setDuplicatingPosition(false);
         }
     };
 
@@ -329,6 +445,9 @@ const RecruiterPositionDetails = () => {
     }
 
     const ownerName = getPositionOwnerName(position);
+    const tagNames = extractTagNames(position);
+    const maxProjects = safeMaxProjects(position.maxProjects);
+    const accessType = getAccessTypePresentation(position.accessType);
 
     return (
         <div className="space-y-6">
@@ -369,7 +488,7 @@ const RecruiterPositionDetails = () => {
                             <button
                                 type="button"
                                 onClick={handleDelete}
-                                disabled={deleting}
+                                disabled={deleting || duplicatingPosition}
                                 className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2"
                             >
                                 {deleting ? (
@@ -420,7 +539,26 @@ const RecruiterPositionDetails = () => {
                         </Link>
                         <button
                             type="button"
+                            onClick={handleDuplicate}
+                            disabled={duplicatingPosition || deleting}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
+                        >
+                            {duplicatingPosition ? (
+                                <>
+                                    <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                    Duplicating...
+                                </>
+                            ) : (
+                                <>
+                                    <Copy className="h-4 w-4" aria-hidden="true" />
+                                    Duplicate Position
+                                </>
+                            )}
+                        </button>
+                        <button
+                            type="button"
                             onClick={openDeleteDialog}
+                            disabled={deleting || duplicatingPosition}
                             className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2"
                         >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -428,6 +566,11 @@ const RecruiterPositionDetails = () => {
                         </button>
                     </div>
                 </div>
+                {duplicatePositionError && (
+                    <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-lg text-sm" role="alert">
+                        {duplicatePositionError}
+                    </div>
+                )}
             </div>
 
             {/* Position Details Card */}
@@ -451,6 +594,32 @@ const RecruiterPositionDetails = () => {
                             <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Department</span>
                             <p className="text-base text-slate-900 dark:text-white">{position.department || "N/A"}</p>
                         </div>
+                        <div>
+                            <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Technology Tags</span>
+                            {tagNames.length === 0 ? (
+                                <p className="text-base text-slate-500 dark:text-slate-400">No Technology Tags configured.</p>
+                            ) : (
+                                <div className="flex flex-wrap gap-2 mt-1">
+                                    {tagNames.map((name, index) => (
+                                        <span
+                                            key={`tag-${index}`}
+                                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                                        >
+                                            {name}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div>
+                            <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Maximum Projects</span>
+                            <div className="mt-1">
+                                <p className="text-base text-slate-900 dark:text-white">Up to {maxProjects} matching Projects</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Generated CVs include only recent Candidate Projects matching at least one Position Technology Tag.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                     {/* Right Column */}
                     <div className="space-y-5">
@@ -462,12 +631,25 @@ const RecruiterPositionDetails = () => {
                             <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Status</span>
                             <span
                                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${position.isActive
-                                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                        : "bg-slate-50 text-slate-700 dark:bg-slate-800/50 dark:text-slate-400"
+                                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                    : "bg-slate-50 text-slate-700 dark:bg-slate-800/50 dark:text-slate-400"
                                     }`}
                             >
                                 {position.isActive ? "Active" : "Inactive"}
                             </span>
+                        </div>
+                        <div>
+                            <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Access Type</span>
+                            <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${accessType.className}`}
+                            >
+                                <Shield className="h-3 w-3" aria-hidden="true" />
+                                {accessType.label}
+                            </span>
+                        </div>
+                        <div>
+                            <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Version</span>
+                            <p className="text-base text-slate-900 dark:text-white">Version {safeVersion(position.version)}</p>
                         </div>
                         <div>
                             <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Posted By</span>
@@ -557,8 +739,8 @@ const RecruiterPositionDetails = () => {
                                         disabled={!selectedCV || likeUpdating}
                                         aria-pressed={Boolean(selectedCV?.likedByCurrentUser)}
                                         className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${selectedCV?.likedByCurrentUser
-                                                ? "bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 focus:ring-red-500"
-                                                : "bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40 focus:ring-blue-500"
+                                            ? "bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 focus:ring-red-500"
+                                            : "bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40 focus:ring-blue-500"
                                             } ${(!selectedCV || likeUpdating) ? "opacity-70 cursor-not-allowed" : ""}`}
                                     >
                                         {likeUpdating ? (

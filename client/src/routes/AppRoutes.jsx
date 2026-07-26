@@ -62,6 +62,8 @@ import CreateDiscussion from "../pages/discussions/CreateDiscussion";
 import DiscussionDetails from "../pages/discussions/DiscussionDetails";
 import EditProfile from "../pages/candidate/profile/EditProfile";
 import PositionAccessRules from "../pages/recruiter/positions/PositionAccessRules";
+import PublicPositions from "../pages/public/PublicPositions";
+import PublicPositionDetails from "../pages/public/PublicPositionDetails";
 
 const AppRoutes = () => {
     return (
@@ -71,6 +73,15 @@ const AppRoutes = () => {
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route
+                    path="/public/positions"
+                    element={<PublicPositions />}
+                />
+
+                <Route
+                    path="/public/positions/:id"
+                    element={<PublicPositionDetails />}
+                />
             </Route>
 
             {/* Protected Routes */}

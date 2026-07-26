@@ -1,32 +1,111 @@
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
     Search,
     Calendar,
     Building2,
     MapPin,
-    BriefcaseBusiness,
     AlertCircle,
     RefreshCw,
-    ShieldCheck,
+    BriefcaseBusiness,
+    FileText,
+    Clock,
 } from "lucide-react";
-import api from "../../../api/axios";
+import api from "../../api/axios";
+
+// --- Helpers ---
 
 const formatDate = (dateString) => {
-    if (!dateString) {
-        return "N/A";
-    }
-
+    if (!dateString) return "N/A";
     const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) {
-        return "N/A";
-    }
-
+    if (Number.isNaN(date.getTime())) return "N/A";
     return date.toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
     });
+};
+
+const safeMaxProjects = (value) => {
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= 10) {
+        return value;
+    }
+    return 4;
+};
+
+const extractTagNames = (position) => {
+    if (
+        !position ||
+        typeof position !== "object" ||
+        !Array.isArray(position.positionTags)
+    ) {
+        return [];
+    }
+
+    const tags = [];
+    const seen = new Set();
+
+    for (const positionTag of position.positionTags) {
+        const rawName = positionTag?.tag?.name;
+
+        if (typeof rawName !== "string") {
+            continue;
+        }
+
+        const name = rawName.trim();
+
+        if (!name) {
+            continue;
+        }
+
+        const normalizedName = name.toLowerCase();
+
+        if (seen.has(normalizedName)) {
+            continue;
+        }
+
+        seen.add(normalizedName);
+        tags.push(name);
+    }
+
+    return tags;
+};
+
+const safeCvsCount = (position) => {
+    const count = position._count?.cvs;
+    if (typeof count === "number" && Number.isSafeInteger(count) && count >= 0) {
+        return count;
+    }
+    return 0;
+};
+
+const renderTagChips = (position) => {
+    const tagNames = extractTagNames(position);
+
+    if (tagNames.length === 0) {
+        return <span className="text-xs text-slate-400 dark:text-slate-500">No Tags</span>;
+    }
+
+    const displayTags = tagNames.slice(0, 3);
+    const remaining = tagNames.length - 3;
+
+    return (
+        <div className="flex flex-wrap gap-1.5">
+            {displayTags.map((name) => (
+                <span
+                    key={`${position.id}-tag-${name.toLowerCase()}`}
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                >
+                    {name}
+                </span>
+            ))}
+            {remaining > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    +{remaining} more
+                </span>
+            )}
+        </div>
+    );
 };
 
 const renderDescriptionPreview = (description) => {
@@ -38,13 +117,9 @@ const renderDescriptionPreview = (description) => {
         );
     }
 
-    const normalizedDescription = description.trim();
+    const trimmed = description.trim();
     const maxLength = 70;
-
-    const preview =
-        normalizedDescription.length > maxLength
-            ? `${normalizedDescription.slice(0, maxLength)}...`
-            : normalizedDescription;
+    const preview = trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}...` : trimmed;
 
     return (
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
@@ -53,7 +128,12 @@ const renderDescriptionPreview = (description) => {
     );
 };
 
-const CandidatePositions = () => {
+// --- Component ---
+
+const PublicPositions = () => {
+    const [searchParams] = useSearchParams();
+    const searchInputRef = useRef(null);
+
     const [positions, setPositions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -68,12 +148,11 @@ const CandidatePositions = () => {
                 setLoading(true);
                 setError("");
 
-                const response = await api.get("/positions");
+                const response = await api.get("/positions/public");
                 const data = response.data?.data;
 
                 if (!cancelled) {
                     setPositions(Array.isArray(data) ? data : []);
-                    setError("");
                 }
             } catch (requestError) {
                 if (!cancelled) {
@@ -98,24 +177,42 @@ const CandidatePositions = () => {
         };
     }, [retryCounter]);
 
+    // Focus search input when ?focus=search is present
+    useEffect(() => {
+        const shouldFocusSearch = searchParams.get("focus") === "search";
+        if (shouldFocusSearch && !loading && !error) {
+            searchInputRef.current?.focus();
+            searchInputRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+        }
+    }, [searchParams, loading, error]);
+
     const handleRetry = () => {
         setLoading(true);
         setError("");
-        setRetryCounter((previous) => previous + 1);
+        setRetryCounter((prev) => prev + 1);
+    };
+
+    const handleClearSearch = () => {
+        setSearchTerm("");
     };
 
     const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+
     const filteredPositions = positions.filter((position) => {
-        if (!normalizedSearchTerm) {
-            return true;
-        }
+        if (!normalizedSearchTerm) return true;
+
+        const tagNames = extractTagNames(position);
 
         const searchableFields = [
             position.title,
+            position.description,
             position.company,
             position.location,
             position.department,
-            position.description,
+            ...tagNames,
         ];
 
         return searchableFields.some(
@@ -125,49 +222,12 @@ const CandidatePositions = () => {
         );
     });
 
-    const handleClearSearch = () => {
-        setSearchTerm("");
-    };
-
-    const renderAccessBadge = (accessType) => {
-        if (accessType === "RESTRICTED") {
-            return (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-                    <ShieldCheck className="w-3 h-3 mr-1" aria-hidden="true" />
-                    Restricted
-                </span>
-            );
-        }
-
-        return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                Public
-            </span>
-        );
-    };
-
-    const renderStatusBadge = (isActive) => {
-        if (isActive) {
-            return (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                    Active
-                </span>
-            );
-        }
-
-        return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-300">
-                Unavailable
-            </span>
-        );
-    };
-
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
-                <div className="flex flex-col items-center gap-2 text-slate-500 dark:text-slate-400">
-                    <RefreshCw className="w-8 h-8 animate-spin" aria-hidden="true" />
-                    <p>Loading available Positions...</p>
+                <div className="text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                    <RefreshCw className="h-5 w-5 animate-spin" aria-hidden="true" />
+                    <span className="text-sm font-medium">Loading available Positions...</span>
                 </div>
             </div>
         );
@@ -180,7 +240,7 @@ const CandidatePositions = () => {
                     className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 max-w-md text-center"
                     role="alert"
                 >
-                    <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" aria-hidden="true" />
+                    <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-3" aria-hidden="true" />
                     <h2 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
                         Error loading Positions
                     </h2>
@@ -201,12 +261,12 @@ const CandidatePositions = () => {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
                 <div className="text-center">
-                    <BriefcaseBusiness className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" aria-hidden="true" />
+                    <BriefcaseBusiness className="h-16 w-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" aria-hidden="true" />
                     <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                         No available Positions found
                     </h2>
                     <p className="text-slate-500 dark:text-slate-400 mt-2">
-                        There are currently no active Positions available to your Candidate Profile.
+                        There are currently no active public Positions available.
                     </p>
                 </div>
             </div>
@@ -217,7 +277,7 @@ const CandidatePositions = () => {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
                 <div className="text-center">
-                    <Search className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" aria-hidden="true" />
+                    <Search className="h-16 w-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" aria-hidden="true" />
                     <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                         No matching Positions found
                     </h2>
@@ -239,37 +299,51 @@ const CandidatePositions = () => {
     return (
         <div className="space-y-6">
             {/* Page Header */}
-            <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    Available Positions
-                </h1>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Browse Positions currently available to your Candidate Profile.
-                </p>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 font-medium">
-                    {filteredPositions.length === 1
-                        ? "1 Position"
-                        : `${filteredPositions.length} Positions`}
-                </p>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                            Available Positions
+                        </h1>
+                        <p className="text-slate-600 dark:text-slate-400 mt-1">
+                            Browse active public Positions in read-only mode. Sign in to check Candidate eligibility and generate a tailored CV.
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 font-medium">
+                            {filteredPositions.length === 1
+                                ? "1 Position"
+                                : `${filteredPositions.length} Positions`}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <Link
+                            to="/login"
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                        >
+                            <FileText className="h-4 w-4" aria-hidden="true" />
+                            Sign in to apply
+                        </Link>
+                    </div>
+                </div>
             </div>
 
-            {/* Search Panel */}
-            <div className="relative">
+            {/* Search */}
+            <div className="relative" id="public-position-search">
                 <Search
                     className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500"
                     aria-hidden="true"
                 />
                 <input
+                    ref={searchInputRef}
                     type="text"
                     aria-label="Search available Positions"
-                    placeholder="Search by title, company, location, department, or description..."
+                    placeholder="Search by title, company, location, department, description, or Technology Tag..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:ring-blue-400 dark:focus:border-blue-400"
                 />
             </div>
 
-            {/* Positions Table */}
+            {/* Table */}
             <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
@@ -294,19 +368,28 @@ const CandidatePositions = () => {
                                     Department
                                 </th>
                                 <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                    Technology Tags
+                                </th>
+                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                    Max Projects
+                                </th>
+                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
                                     <div className="flex items-center gap-1">
                                         <Calendar className="w-4 h-4" aria-hidden="true" />
                                         Deadline
                                     </div>
                                 </th>
                                 <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    Access
+                                    <div className="flex items-center gap-1">
+                                        <FileText className="w-4 h-4" aria-hidden="true" />
+                                        CVs
+                                    </div>
                                 </th>
                                 <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    Status
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    Updated
+                                    <div className="flex items-center gap-1">
+                                        <Clock className="w-4 h-4" aria-hidden="true" />
+                                        Updated
+                                    </div>
                                 </th>
                             </tr>
                         </thead>
@@ -318,7 +401,7 @@ const CandidatePositions = () => {
                                 >
                                     <td className="px-6 py-4">
                                         <Link
-                                            to={`/candidate/positions/${position.id}`}
+                                            to={`/public/positions/${position.id}`}
                                             className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 focus:outline-none focus:underline"
                                         >
                                             {position.title}
@@ -334,14 +417,17 @@ const CandidatePositions = () => {
                                     <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
                                         {position.department || "—"}
                                     </td>
+                                    <td className="px-6 py-4">
+                                        {renderTagChips(position)}
+                                    </td>
+                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                        {safeMaxProjects(position.maxProjects)} Projects
+                                    </td>
                                     <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
                                         {formatDate(position.deadline)}
                                     </td>
-                                    <td className="px-6 py-4">
-                                        {renderAccessBadge(position.accessType)}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        {renderStatusBadge(position.isActive)}
+                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                        {safeCvsCount(position)}
                                     </td>
                                     <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
                                         {formatDate(position.updatedAt)}
@@ -356,4 +442,4 @@ const CandidatePositions = () => {
     );
 };
 
-export default CandidatePositions;
+export default PublicPositions;

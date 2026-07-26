@@ -3,6 +3,9 @@ const {
     evaluatePositionEligibility,
     loadAndEvaluatePositionEligibility,
 } = require("../services/positionEligibility.service");
+const {
+    loadFilteredProfileProjects,
+} = require("../services/projectFiltering.service");
 
 const prisma = new PrismaClient();
 
@@ -379,67 +382,6 @@ const getCVDetailWithPositionAttributesSelect = (role, currentUserId) => {
  * Static mutation selection (without recruiter like state)
  */
 const cvMutationSelect = getCVDetailSelect("", "");
-
-/**
- * Profile Project selection with period and relational tags
- */
-const profileProjectSelect = {
-    id: true,
-    title: true,
-    description: true,
-    startDate: true,
-    endDate: true,
-    isOngoing: true,
-    createdAt: true,
-    updatedAt: true,
-    projectTags: {
-        select: {
-            id: true,
-            tagId: true,
-            createdAt: true,
-            tag: {
-                select: {
-                    id: true,
-                    name: true,
-                    normalizedName: true,
-                },
-            },
-        },
-        orderBy: [
-            {
-                createdAt: "asc",
-            },
-            {
-                id: "asc",
-            },
-        ],
-    },
-};
-
-const profileProjectOrderBy = [
-    {
-        startDate: "desc",
-    },
-    {
-        createdAt: "desc",
-    },
-    {
-        id: "asc",
-    },
-];
-
-/**
- * Reusable Profile Project loader
- */
-const loadProfileProjects = async (client, userId) => {
-    return client.project.findMany({
-        where: {
-            userId,
-        },
-        select: profileProjectSelect,
-        orderBy: profileProjectOrderBy,
-    });
-};
 
 /**
  * Create a new CV
@@ -1052,10 +994,11 @@ const getCVById = async (req, res) => {
                 }
             );
 
-            // 5. Load relational Profile Projects with period and tags
-            const profileProjects = await loadProfileProjects(
+            // 5. Load filtered Profile Projects with period and tags
+            const profileProjects = await loadFilteredProfileProjects(
                 prisma,
-                cv.userId
+                cv.userId,
+                cv.positionId
             );
 
             const { positionAttributes, ...cleanPosition } = cv.position;
@@ -1186,10 +1129,11 @@ const getCVById = async (req, res) => {
                 }
             );
 
-            // 5. Load relational Profile Projects with period and tags
-            const profileProjects = await loadProfileProjects(
+            // 5. Load filtered Profile Projects with period and tags
+            const profileProjects = await loadFilteredProfileProjects(
                 prisma,
-                cv.userId
+                cv.userId,
+                cv.positionId
             );
 
             const { positionAttributes, ...cleanPosition } = cv.position;
@@ -1274,10 +1218,11 @@ const getCVById = async (req, res) => {
             }
         );
 
-        // Load relational Profile Projects with period and tags
-        const profileProjects = await loadProfileProjects(
+        // Load filtered Profile Projects with period and tags
+        const profileProjects = await loadFilteredProfileProjects(
             prisma,
-            cv.userId
+            cv.userId,
+            cv.positionId
         );
 
         const { positionAttributes, ...cleanPosition } = cv.position;

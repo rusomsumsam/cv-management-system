@@ -61,12 +61,29 @@ model Tag {
   name           String
   normalizedName String @unique
 
-  projectTags ProjectTag[]
+  projectTags  ProjectTag[]
+  positionTags PositionTag[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([name])
+}
+
+model PositionTag {
+  id String @id @default(cuid())
+
+  positionId String
+  tagId      String
+
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([positionId, tagId])
+  @@index([positionId])
+  @@index([tagId])
 }
 
 model ProjectTag {
@@ -155,11 +172,15 @@ model Position {
   accessType      PositionAccessType @default(PUBLIC)
   accessRuleLogic AccessRuleLogic    @default(ALL)
 
+  maxProjects Int @default(4)
+  version     Int @default(1)
+
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
   positionAttributes PositionAttribute[]
   accessRules        PositionAccessRule[]
+  positionTags       PositionTag[]
   cvs                CV[]
   discussions        Discussion[]
 

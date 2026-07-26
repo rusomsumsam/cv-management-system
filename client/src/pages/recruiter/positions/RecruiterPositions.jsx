@@ -11,7 +11,8 @@ import {
     Tag,
     AlertCircle,
     RefreshCw,
-    BriefcaseBusiness
+    BriefcaseBusiness,
+    Copy,
 } from "lucide-react";
 import api from "../../../api/axios";
 
@@ -27,6 +28,11 @@ const RecruiterPositions = () => {
     const [deleteError, setDeleteError] = useState("");
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [retryCounter, setRetryCounter] = useState(0);
+
+    // Duplicate state
+    const [duplicating, setDuplicating] = useState(false);
+    const [duplicateError, setDuplicateError] = useState("");
+    const [duplicateMessage, setDuplicateMessage] = useState("");
 
     useEffect(() => {
         let cancelled = false;
@@ -62,6 +68,8 @@ const RecruiterPositions = () => {
     const handleRetry = () => {
         setLoading(true);
         setError("");
+        setDuplicateError("");
+        setDuplicateMessage("");
         setRetryCounter((previous) => previous + 1);
     };
 
@@ -70,28 +78,42 @@ const RecruiterPositions = () => {
             currentId === positionId ? "" : positionId
         );
         setDeleteError("");
+        setDuplicateError("");
+        setDuplicateMessage("");
     };
 
     const selectedPosition =
         positions.find((position) => position.id === selectedPositionId) || null;
 
     const handleEditSelected = () => {
-        if (!selectedPosition) return;
+        if (!selectedPosition || duplicating || deleting) return;
+        setDuplicateError("");
+        setDuplicateMessage("");
         navigate(`/positions/edit/${selectedPosition.id}`);
     };
 
     const handleOpenDeleteDialog = () => {
-        if (!selectedPosition) return;
+        if (!selectedPosition || duplicating || deleting) return;
         setDeleteError("");
+        setDuplicateError("");
+        setDuplicateMessage("");
         setIsDeleteDialogOpen(true);
     };
 
+    const handleCancelDelete = () => {
+        if (deleting) return;
+        setDeleteError("");
+        setIsDeleteDialogOpen(false);
+    };
+
     const handleDeleteSelected = async () => {
-        if (!selectedPosition || deleting) return;
+        if (!selectedPosition || deleting || duplicating) return;
 
         try {
             setDeleting(true);
             setDeleteError("");
+            setDuplicateError("");
+            setDuplicateMessage("");
 
             await api.delete(`/positions/${selectedPosition.id}`);
 
@@ -112,10 +134,38 @@ const RecruiterPositions = () => {
         }
     };
 
-    const handleCancelDelete = () => {
-        if (deleting) return;
-        setDeleteError("");
-        setIsDeleteDialogOpen(false);
+    const handleDuplicateSelected = async () => {
+        if (!selectedPosition || duplicating || deleting) return;
+
+        try {
+            setDuplicating(true);
+            setDuplicateError("");
+            setDuplicateMessage("");
+
+            const response = await api.post(`/positions/${selectedPosition.id}/duplicate`);
+            const duplicatedData = response.data?.data;
+
+            if (
+                !duplicatedData ||
+                typeof duplicatedData !== "object" ||
+                typeof duplicatedData.id !== "string" ||
+                !duplicatedData.id.trim()
+            ) {
+                throw new Error("Duplicate response is invalid.");
+            }
+
+            setPositions((currentPositions) => [duplicatedData, ...currentPositions]);
+            setSelectedPositionId(duplicatedData.id.trim());
+            setDuplicateMessage(response.data?.message || "Position duplicated successfully.");
+        } catch (requestError) {
+            setDuplicateError(
+                requestError.response?.data?.message ||
+                "Failed to duplicate Position. Please try again."
+            );
+            console.error("Failed to duplicate Position:", requestError.message);
+        } finally {
+            setDuplicating(false);
+        }
     };
 
     const formatDate = (dateString) => {
@@ -131,16 +181,96 @@ const RecruiterPositions = () => {
         });
     };
 
+    const safeMaxProjects = (value) => {
+        if (typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= 10) {
+            return value;
+        }
+        return 4;
+    };
+
+    const extractTagNames = (position) => {
+        if (
+            !position ||
+            typeof position !== "object" ||
+            !Array.isArray(position.positionTags)
+        ) {
+            return [];
+        }
+
+        const names = [];
+        const seen = new Set();
+
+        for (const positionTag of position.positionTags) {
+            const rawName = positionTag?.tag?.name;
+
+            if (typeof rawName !== "string") {
+                continue;
+            }
+
+            const name = rawName.trim();
+
+            if (!name) {
+                continue;
+            }
+
+            const normalizedName = name.toLowerCase();
+
+            if (seen.has(normalizedName)) {
+                continue;
+            }
+
+            seen.add(normalizedName);
+            names.push(name);
+        }
+
+        return names;
+    };
+
+    const renderTagChips = (position) => {
+        const tagNames = extractTagNames(position);
+        if (tagNames.length === 0) {
+            return <span className="text-xs text-slate-400 dark:text-slate-500">No Tags</span>;
+        }
+
+        const displayTags = tagNames.slice(0, 3);
+        const remaining = tagNames.length - 3;
+
+        return (
+            <div className="flex flex-wrap gap-1.5">
+                {displayTags.map((name, index) => (
+                    <span
+                        key={`${position.id}-tag-${index}`}
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                    >
+                        {name}
+                    </span>
+                ))}
+                {remaining > 0 && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        +{remaining} more
+                    </span>
+                )}
+            </div>
+        );
+    };
+
+    const includesSearchTerm = (value, normalizedSearchTerm) => {
+        return typeof value === "string" && value.toLowerCase().includes(normalizedSearchTerm);
+    };
+
     const normalizedSearchTerm = searchTerm.trim().toLowerCase();
     const filteredPositions = positions.filter((position) => {
         if (!normalizedSearchTerm) return true;
 
+        const tagNames = extractTagNames(position);
+
         return (
-            position.title?.toLowerCase().includes(normalizedSearchTerm) ||
-            position.company?.toLowerCase().includes(normalizedSearchTerm) ||
-            position.location?.toLowerCase().includes(normalizedSearchTerm) ||
-            position.department?.toLowerCase().includes(normalizedSearchTerm) ||
-            position.description?.toLowerCase().includes(normalizedSearchTerm)
+            includesSearchTerm(position.title, normalizedSearchTerm) ||
+            includesSearchTerm(position.company, normalizedSearchTerm) ||
+            includesSearchTerm(position.location, normalizedSearchTerm) ||
+            includesSearchTerm(position.department, normalizedSearchTerm) ||
+            includesSearchTerm(position.description, normalizedSearchTerm) ||
+            tagNames.some((name) => includesSearchTerm(name, normalizedSearchTerm))
         );
     });
 
@@ -215,7 +345,7 @@ const RecruiterPositions = () => {
                     <input
                         type="search"
                         aria-label="Search recruiter positions"
-                        placeholder="Search by title, company, location, department, or description..."
+                        placeholder="Search by title, company, location, department, description, or tags..."
                         value={searchTerm}
                         onChange={(event) => setSearchTerm(event.target.value)}
                         className="w-full rounded-md border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-blue-500 dark:focus:ring-blue-500"
@@ -237,11 +367,40 @@ const RecruiterPositions = () => {
                         "Select a position to manage it."
                     )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Duplicate Feedback */}
+                    {duplicateError && (
+                        <div className="mr-2 text-xs text-red-600 dark:text-red-400" role="alert">
+                            {duplicateError}
+                        </div>
+                    )}
+                    {duplicateMessage && !duplicateError && (
+                        <div className="mr-2 text-xs text-emerald-600 dark:text-emerald-400" role="status">
+                            {duplicateMessage}
+                        </div>
+                    )}
+                    <button
+                        type="button"
+                        onClick={handleDuplicateSelected}
+                        disabled={!selectedPosition || duplicating || deleting}
+                        className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-emerald-700 dark:hover:bg-emerald-600 dark:focus:ring-offset-slate-900"
+                    >
+                        {duplicating ? (
+                            <>
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                Duplicating...
+                            </>
+                        ) : (
+                            <>
+                                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                                Duplicate
+                            </>
+                        )}
+                    </button>
                     <button
                         type="button"
                         onClick={handleEditSelected}
-                        disabled={!selectedPosition}
+                        disabled={!selectedPosition || duplicating || deleting}
                         className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900"
                     >
                         <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
@@ -250,7 +409,7 @@ const RecruiterPositions = () => {
                     <button
                         type="button"
                         onClick={handleOpenDeleteDialog}
-                        disabled={!selectedPosition}
+                        disabled={!selectedPosition || duplicating || deleting}
                         className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-700 dark:hover:bg-red-600 dark:focus:ring-offset-slate-900"
                     >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -310,6 +469,12 @@ const RecruiterPositions = () => {
                                         Department
                                     </th>
                                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        Technology Tags
+                                    </th>
+                                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        Max Projects
+                                    </th>
+                                    <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
                                         Deadline
                                     </th>
                                     <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -328,8 +493,8 @@ const RecruiterPositions = () => {
                                         <tr
                                             key={position.id}
                                             className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${isSelected
-                                                    ? "bg-blue-50 dark:bg-blue-900/10"
-                                                    : ""
+                                                ? "bg-blue-50 dark:bg-blue-900/10"
+                                                : ""
                                                 }`}
                                         >
                                             <td className="px-4 py-3">
@@ -376,6 +541,12 @@ const RecruiterPositions = () => {
                                             <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                                                 {position.department || "N/A"}
                                             </td>
+                                            <td className="px-4 py-3">
+                                                {renderTagChips(position)}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                                                {safeMaxProjects(position.maxProjects)} Projects
+                                            </td>
                                             <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                                                 <div className="flex items-center gap-2">
                                                     <Calendar className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" aria-hidden="true" />
@@ -385,8 +556,8 @@ const RecruiterPositions = () => {
                                             <td className="px-4 py-3">
                                                 <span
                                                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${position.isActive === true
-                                                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                                            : "bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                                        : "bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
                                                         }`}
                                                 >
                                                     {position.isActive === true ? "Active" : "Inactive"}
@@ -442,7 +613,7 @@ const RecruiterPositions = () => {
                             <button
                                 type="button"
                                 onClick={handleDeleteSelected}
-                                disabled={deleting}
+                                disabled={deleting || duplicating}
                                 className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-700 dark:hover:bg-red-600 dark:focus:ring-offset-slate-900"
                             >
                                 {deleting && (

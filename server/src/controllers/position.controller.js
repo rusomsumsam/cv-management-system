@@ -5,6 +5,14 @@ const {
 
 const prisma = new PrismaClient();
 
+// --- Constants ---
+
+const DEFAULT_MAX_PROJECTS = 4;
+const MIN_MAX_PROJECTS = 1;
+const MAX_MAX_PROJECTS = 10;
+const MAX_POSITION_TAGS = 15;
+const MAX_TAG_LENGTH = 50;
+
 // --- Helpers ---
 
 const getRequestRole = (req) => req.user?.role?.toUpperCase() || "";
@@ -109,6 +117,192 @@ const parseOptionalString = (value) => {
     return { valid: true, value: normalizedValue || null };
 };
 
+const parseMaxProjects = (value) => {
+    if (value === undefined) {
+        return { valid: true, value: undefined };
+    }
+
+    if (typeof value === "number" && Number.isSafeInteger(value)) {
+        if (value < MIN_MAX_PROJECTS || value > MAX_MAX_PROJECTS) {
+            return {
+                valid: false,
+                error: `Maximum Projects must be an integer between ${MIN_MAX_PROJECTS} and ${MAX_MAX_PROJECTS}.`,
+            };
+        }
+        return { valid: true, value };
+    }
+
+    if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+        const parsed = Number(value.trim());
+        if (!Number.isSafeInteger(parsed)) {
+            return {
+                valid: false,
+                error: `Maximum Projects must be an integer between ${MIN_MAX_PROJECTS} and ${MAX_MAX_PROJECTS}.`,
+            };
+        }
+        if (parsed < MIN_MAX_PROJECTS || parsed > MAX_MAX_PROJECTS) {
+            return {
+                valid: false,
+                error: `Maximum Projects must be an integer between ${MIN_MAX_PROJECTS} and ${MAX_MAX_PROJECTS}.`,
+            };
+        }
+        return { valid: true, value: parsed };
+    }
+
+    return {
+        valid: false,
+        error: `Maximum Projects must be an integer between ${MIN_MAX_PROJECTS} and ${MAX_MAX_PROJECTS}.`,
+    };
+};
+
+const parseVersion = (value) => {
+    if (value === undefined) {
+        return { valid: false, error: "A valid Position version is required." };
+    }
+
+    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+        return { valid: true, value };
+    }
+
+    if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+        const parsed = Number(value.trim());
+        if (Number.isSafeInteger(parsed) && parsed > 0) {
+            return { valid: true, value: parsed };
+        }
+    }
+
+    return { valid: false, error: "A valid Position version is required." };
+};
+
+const parseTags = (tags) => {
+    if (tags === undefined) {
+        return { valid: true, value: undefined };
+    }
+
+    if (!Array.isArray(tags)) {
+        return {
+            valid: false,
+            error: "Technology Tags must be provided as an array.",
+        };
+    }
+
+    const normalizedTags = [];
+    const seen = new Set();
+
+    for (const tag of tags) {
+        if (typeof tag !== "string") {
+            return {
+                valid: false,
+                error: "Each Technology Tag must be a string.",
+            };
+        }
+
+        const name = tag.trim().replace(/\s+/g, " ");
+
+        if (!name) {
+            return {
+                valid: false,
+                error: "Technology Tag names cannot be empty.",
+            };
+        }
+
+        if (name.length > MAX_TAG_LENGTH) {
+            return {
+                valid: false,
+                error: `Each Technology Tag can contain at most ${MAX_TAG_LENGTH} characters.`,
+            };
+        }
+
+        const normalizedName = name.toLowerCase();
+
+        if (seen.has(normalizedName)) {
+            continue;
+        }
+
+        seen.add(normalizedName);
+
+        normalizedTags.push({
+            name,
+            normalizedName,
+        });
+    }
+
+    if (normalizedTags.length > MAX_POSITION_TAGS) {
+        return {
+            valid: false,
+            error: `A Position can have at most ${MAX_POSITION_TAGS} Technology Tags.`,
+        };
+    }
+
+    return { valid: true, value: normalizedTags };
+};
+
+const syncPositionTags = async (tx, positionId, normalizedTags) => {
+    // 1. Find existing tags
+    const existingTags = await tx.tag.findMany({
+        where: {
+            normalizedName: {
+                in: normalizedTags.map((t) => t.normalizedName),
+            },
+        },
+        select: {
+            id: true,
+            name: true,
+            normalizedName: true,
+        },
+    });
+
+    const existingNormalizedNames = new Set(
+        existingTags.map((t) => t.normalizedName)
+    );
+
+    // 2. Create missing tags
+    const missingTags = normalizedTags.filter(
+        (t) => !existingNormalizedNames.has(t.normalizedName)
+    );
+
+    if (missingTags.length > 0) {
+        await tx.tag.createMany({
+            data: missingTags.map((t) => ({
+                name: t.name,
+                normalizedName: t.normalizedName,
+            })),
+            skipDuplicates: true,
+        });
+    }
+
+    // 3. Fetch all requested tags
+    const allTags = await tx.tag.findMany({
+        where: {
+            normalizedName: {
+                in: normalizedTags.map((t) => t.normalizedName),
+            },
+        },
+        select: {
+            id: true,
+            name: true,
+            normalizedName: true,
+        },
+    });
+
+    // 4. Delete existing position tags
+    await tx.positionTag.deleteMany({
+        where: {
+            positionId,
+        },
+    });
+
+    // 5. Create new position tags
+    if (allTags.length > 0) {
+        await tx.positionTag.createMany({
+            data: allTags.map((tag) => ({
+                positionId,
+                tagId: tag.id,
+            })),
+        });
+    }
+};
+
 const handleServerError = (res, operation, error) => {
     console.error(`Position ${operation} error:`, error.message);
     return res.status(500).json({
@@ -117,7 +311,9 @@ const handleServerError = (res, operation, error) => {
     });
 };
 
-const positionSelect = {
+// --- Position Selects ---
+
+const authenticatedPositionSelect = {
     id: true,
     title: true,
     description: true,
@@ -128,6 +324,8 @@ const positionSelect = {
     isActive: true,
     accessType: true,
     accessRuleLogic: true,
+    maxProjects: true,
+    version: true,
     userId: true,
     createdAt: true,
     updatedAt: true,
@@ -145,6 +343,28 @@ const positionSelect = {
             positionAttributes: true,
             discussions: true,
         },
+    },
+    positionTags: {
+        select: {
+            id: true,
+            tagId: true,
+            createdAt: true,
+            tag: {
+                select: {
+                    id: true,
+                    name: true,
+                    normalizedName: true,
+                },
+            },
+        },
+        orderBy: [
+            {
+                createdAt: "asc",
+            },
+            {
+                id: "asc",
+            },
+        ],
     },
 };
 
@@ -164,9 +384,50 @@ const accessRuleSelect = {
 };
 
 const candidatePositionSelect = {
-    ...positionSelect,
+    ...authenticatedPositionSelect,
     accessRules: {
         select: accessRuleSelect,
+        orderBy: [
+            {
+                createdAt: "asc",
+            },
+            {
+                id: "asc",
+            },
+        ],
+    },
+};
+
+const publicPositionSelect = {
+    id: true,
+    title: true,
+    description: true,
+    company: true,
+    location: true,
+    department: true,
+    deadline: true,
+    accessType: true,
+    maxProjects: true,
+    createdAt: true,
+    updatedAt: true,
+    _count: {
+        select: {
+            cvs: true,
+        },
+    },
+    positionTags: {
+        select: {
+            id: true,
+            tagId: true,
+            createdAt: true,
+            tag: {
+                select: {
+                    id: true,
+                    name: true,
+                    normalizedName: true,
+                },
+            },
+        },
         orderBy: [
             {
                 createdAt: "asc",
@@ -209,15 +470,15 @@ const createPosition = async (req, res) => {
             });
         }
 
-        if (role !== "RECRUITER") {
+        if (role !== "RECRUITER" && role !== "ADMIN") {
             return res.status(403).json({
                 success: false,
-                message: "Only Recruiters can create Positions through this endpoint.",
+                message: "Only Recruiters and Admins can create Positions through this endpoint.",
             });
         }
 
         const body = getRequestBody(req);
-        const { title, description, company, location, department, deadline } = body;
+        const { title, description, company, location, department, deadline, maxProjects, tags } = body;
 
         if (!title || typeof title !== "string" || !title.trim()) {
             return res.status(400).json({
@@ -265,25 +526,124 @@ const createPosition = async (req, res) => {
             });
         }
 
-        const position = await prisma.position.create({
-            data: {
-                title: title.trim(),
-                description: parsedDescription.value,
-                company: company.trim(),
-                location: parsedLocation.value,
-                department: parsedDepartment.value,
-                deadline: parsedDeadline.value ?? null,
-                userId: req.user.id,
-            },
-            select: positionSelect,
+        const parsedMaxProjects = parseMaxProjects(maxProjects);
+        if (!parsedMaxProjects.valid) {
+            return res.status(400).json({
+                success: false,
+                message: parsedMaxProjects.error,
+            });
+        }
+
+        const parsedTags = parseTags(tags);
+        if (!parsedTags.valid) {
+            return res.status(400).json({
+                success: false,
+                message: parsedTags.error,
+            });
+        }
+
+        const maxProjectsValue = parsedMaxProjects.value ?? DEFAULT_MAX_PROJECTS;
+
+        const result = await prisma.$transaction(async (tx) => {
+            // Create position
+            const position = await tx.position.create({
+                data: {
+                    title: title.trim(),
+                    description: parsedDescription.value,
+                    company: company.trim(),
+                    location: parsedLocation.value,
+                    department: parsedDepartment.value,
+                    deadline: parsedDeadline.value ?? null,
+                    maxProjects: maxProjectsValue,
+                    userId: req.user.id,
+                    version: 1,
+                },
+                select: authenticatedPositionSelect,
+            });
+
+            // Sync tags if provided
+            if (parsedTags.value) {
+                await syncPositionTags(tx, position.id, parsedTags.value);
+            }
+
+            // Reload with tags
+            const createdPosition = await tx.position.findUnique({
+                where: { id: position.id },
+                select: authenticatedPositionSelect,
+            });
+
+            return createdPosition;
         });
 
         return res.status(201).json({
             success: true,
-            data: position,
+            data: result,
         });
     } catch (error) {
         return handleServerError(res, "create", error);
+    }
+};
+
+const getPublicPositions = async (req, res) => {
+    try {
+        const positions = await prisma.position.findMany({
+            where: {
+                isActive: true,
+                accessType: "PUBLIC",
+            },
+            select: publicPositionSelect,
+            orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }],
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: positions,
+        });
+    } catch (error) {
+        console.error("Public Position load error:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to load available Positions. Please try again.",
+        });
+    }
+};
+
+const getPublicPositionById = async (req, res) => {
+    try {
+        const id = getValidId(req.params.id);
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Position ID is required.",
+            });
+        }
+
+        const position = await prisma.position.findFirst({
+            where: {
+                id,
+                isActive: true,
+                accessType: "PUBLIC",
+            },
+            select: publicPositionSelect,
+        });
+
+        if (!position) {
+            return res.status(404).json({
+                success: false,
+                message: "Position not found.",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: position,
+        });
+    } catch (error) {
+        console.error("Public Position load error:", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to load Position details. Please try again.",
+        });
     }
 };
 
@@ -311,7 +671,7 @@ const getPositions = async (req, res) => {
                     isActive: true,
                 },
                 select: candidatePositionSelect,
-                orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+                orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }],
             });
 
             // Collect all unique attribute IDs from all access rules across all positions
@@ -362,18 +722,10 @@ const getPositions = async (req, res) => {
             });
         }
 
-        // Recruiter and Admin branch
-        let where = {};
-        if (role === "RECRUITER") {
-            where = { userId: req.user.id };
-        } else if (role === "ADMIN") {
-            where = {};
-        }
-
+        // Recruiter and Admin branch: all positions (shared pool)
         const positions = await prisma.position.findMany({
-            where,
-            select: positionSelect,
-            orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+            select: authenticatedPositionSelect,
+            orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }, { id: "asc" }],
         });
 
         return res.status(200).json({
@@ -471,17 +823,10 @@ const getPositionById = async (req, res) => {
             });
         }
 
-        // Recruiter and Admin branch
-        let where = { id };
-        if (role === "RECRUITER") {
-            where = { id, userId: req.user.id };
-        } else if (role === "ADMIN") {
-            where = { id };
-        }
-
+        // Recruiter and Admin branch: any position
         const position = await prisma.position.findFirst({
-            where,
-            select: positionSelect,
+            where: { id },
+            select: authenticatedPositionSelect,
         });
 
         if (!position) {
@@ -497,6 +842,154 @@ const getPositionById = async (req, res) => {
         });
     } catch (error) {
         return handleServerError(res, "load", error);
+    }
+};
+
+const duplicatePosition = async (req, res) => {
+    try {
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required.",
+            });
+        }
+
+        const role = getRequestRole(req);
+        if (!isSupportedRole(role)) {
+            return res.status(403).json({
+                success: false,
+                message: "Unsupported role.",
+            });
+        }
+
+        if (role !== "RECRUITER" && role !== "ADMIN") {
+            return res.status(403).json({
+                success: false,
+                message: "You are not authorized to duplicate this Position.",
+            });
+        }
+
+        const id = getValidId(req.params.id);
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                message: "Position ID is required.",
+            });
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            // Load source position with relations to copy
+            const sourcePosition = await tx.position.findFirst({
+                where: { id },
+                select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    company: true,
+                    location: true,
+                    department: true,
+                    deadline: true,
+                    isActive: true,
+                    accessType: true,
+                    accessRuleLogic: true,
+                    maxProjects: true,
+                    positionAttributes: {
+                        select: {
+                            attributeId: true,
+                        },
+                    },
+                    accessRules: {
+                        select: {
+                            attributeId: true,
+                            operator: true,
+                            value: true,
+                        },
+                    },
+                    positionTags: {
+                        select: {
+                            tagId: true,
+                        },
+                    },
+                },
+            });
+
+            if (!sourcePosition) {
+                throw new Error("Position not found");
+            }
+
+            // Create new position
+            const newPosition = await tx.position.create({
+                data: {
+                    title: `${sourcePosition.title} (Copy)`,
+                    description: sourcePosition.description,
+                    company: sourcePosition.company,
+                    location: sourcePosition.location,
+                    department: sourcePosition.department,
+                    deadline: sourcePosition.deadline,
+                    isActive: sourcePosition.isActive,
+                    accessType: sourcePosition.accessType,
+                    accessRuleLogic: sourcePosition.accessRuleLogic,
+                    maxProjects: sourcePosition.maxProjects ?? DEFAULT_MAX_PROJECTS,
+                    userId: req.user.id,
+                    version: 1,
+                },
+                select: authenticatedPositionSelect,
+            });
+
+            // Copy position attributes
+            if (sourcePosition.positionAttributes && sourcePosition.positionAttributes.length > 0) {
+                await tx.positionAttribute.createMany({
+                    data: sourcePosition.positionAttributes.map((attr) => ({
+                        positionId: newPosition.id,
+                        attributeId: attr.attributeId,
+                    })),
+                });
+            }
+
+            // Copy access rules
+            if (sourcePosition.accessRules && sourcePosition.accessRules.length > 0) {
+                await tx.positionAccessRule.createMany({
+                    data: sourcePosition.accessRules.map((rule) => ({
+                        positionId: newPosition.id,
+                        attributeId: rule.attributeId,
+                        operator: rule.operator,
+                        value: rule.value,
+                    })),
+                });
+            }
+
+            // Copy position tags
+            if (sourcePosition.positionTags && sourcePosition.positionTags.length > 0) {
+                await tx.positionTag.createMany({
+                    data: sourcePosition.positionTags.map((tag) => ({
+                        positionId: newPosition.id,
+                        tagId: tag.tagId,
+                    })),
+                });
+            }
+
+            // Reload the position
+            const duplicatedPosition = await tx.position.findUnique({
+                where: { id: newPosition.id },
+                select: authenticatedPositionSelect,
+            });
+
+            return duplicatedPosition;
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Position duplicated successfully.",
+            data: result,
+        });
+    } catch (error) {
+        if (error.message === "Position not found") {
+            return res.status(404).json({
+                success: false,
+                message: "Position not found.",
+            });
+        }
+        return handleServerError(res, "duplicate", error);
     }
 };
 
@@ -532,25 +1025,6 @@ const updatePosition = async (req, res) => {
             });
         }
 
-        let where = { id };
-
-        if (role === "RECRUITER") {
-            where = { id, userId: req.user.id };
-        } else if (role === "ADMIN") {
-            where = { id };
-        }
-
-        const existingPosition = await prisma.position.findFirst({
-            where,
-        });
-
-        if (!existingPosition) {
-            return res.status(404).json({
-                success: false,
-                message: "Position not found.",
-            });
-        }
-
         const body = getRequestBody(req);
         const {
             title,
@@ -560,8 +1034,40 @@ const updatePosition = async (req, res) => {
             department,
             deadline,
             isActive,
+            maxProjects,
+            tags,
+            version,
         } = body;
 
+        // Validate version
+        const parsedVersion = parseVersion(version);
+        if (!parsedVersion.valid) {
+            return res.status(400).json({
+                success: false,
+                message: parsedVersion.error,
+            });
+        }
+
+        // Check if any editable field is being updated
+        const hasEditableFields =
+            title !== undefined ||
+            description !== undefined ||
+            company !== undefined ||
+            location !== undefined ||
+            department !== undefined ||
+            deadline !== undefined ||
+            isActive !== undefined ||
+            maxProjects !== undefined ||
+            tags !== undefined;
+
+        if (!hasEditableFields) {
+            return res.status(400).json({
+                success: false,
+                message: "No valid fields were provided for update.",
+            });
+        }
+
+        // Build update data
         const updateData = {};
 
         if (title !== undefined) {
@@ -639,24 +1145,91 @@ const updatePosition = async (req, res) => {
             updateData.isActive = parsedIsActive.value;
         }
 
-        if (Object.keys(updateData).length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "No valid fields were provided for update.",
-            });
+        if (maxProjects !== undefined) {
+            const parsedMaxProjects = parseMaxProjects(maxProjects);
+            if (!parsedMaxProjects.valid) {
+                return res.status(400).json({
+                    success: false,
+                    message: parsedMaxProjects.error,
+                });
+            }
+            updateData.maxProjects = parsedMaxProjects.value;
         }
 
-        const updatedPosition = await prisma.position.update({
-            where: { id: existingPosition.id },
-            data: updateData,
-            select: positionSelect,
+        // Parse tags if provided
+        let parsedTags = null;
+        if (tags !== undefined) {
+            parsedTags = parseTags(tags);
+            if (!parsedTags.valid) {
+                return res.status(400).json({
+                    success: false,
+                    message: parsedTags.error,
+                });
+            }
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            // Check current version
+            const currentPosition = await tx.position.findUnique({
+                where: { id },
+                select: { version: true },
+            });
+
+            if (!currentPosition) {
+                throw new Error("Position not found");
+            }
+
+            if (currentPosition.version !== parsedVersion.value) {
+                throw new Error("Version conflict");
+            }
+
+            // Update position with version increment
+            const updatedPosition = await tx.position.updateMany({
+                where: {
+                    id,
+                    version: parsedVersion.value,
+                },
+                data: {
+                    ...updateData,
+                    version: { increment: 1 },
+                },
+            });
+
+            if (updatedPosition.count === 0) {
+                throw new Error("Version conflict");
+            }
+
+            // Sync tags if provided (handles empty array and non-empty array)
+            if (tags !== undefined) {
+                await syncPositionTags(tx, id, parsedTags.value);
+            }
+
+            // Reload updated position
+            const reloadedPosition = await tx.position.findUnique({
+                where: { id },
+                select: authenticatedPositionSelect,
+            });
+
+            return reloadedPosition;
         });
 
         return res.status(200).json({
             success: true,
-            data: updatedPosition,
+            data: result,
         });
     } catch (error) {
+        if (error.message === "Position not found") {
+            return res.status(404).json({
+                success: false,
+                message: "Position not found.",
+            });
+        }
+        if (error.message === "Version conflict") {
+            return res.status(409).json({
+                success: false,
+                message: "This Position was modified by another user. Reload the latest version and try again.",
+            });
+        }
         return handleServerError(res, "update", error);
     }
 };
@@ -693,16 +1266,8 @@ const deletePosition = async (req, res) => {
             });
         }
 
-        let where = { id };
-
-        if (role === "RECRUITER") {
-            where = { id, userId: req.user.id };
-        } else if (role === "ADMIN") {
-            where = { id };
-        }
-
         const position = await prisma.position.findFirst({
-            where,
+            where: { id },
         });
 
         if (!position) {
@@ -740,8 +1305,11 @@ const deletePosition = async (req, res) => {
 
 module.exports = {
     createPosition,
+    getPublicPositions,
+    getPublicPositionById,
     getPositions,
     getPositionById,
+    duplicatePosition,
     updatePosition,
     deletePosition,
 };

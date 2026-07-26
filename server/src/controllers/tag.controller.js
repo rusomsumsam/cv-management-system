@@ -7,7 +7,8 @@ const prisma = new PrismaClient();
 
 const getRequestRole = (req) => req.user?.role?.toUpperCase() || "";
 
-const isCandidate = (req) => getRequestRole(req) === "CANDIDATE";
+const isSupportedRole = (role) =>
+    ["CANDIDATE", "RECRUITER", "ADMIN"].includes(role);
 
 const normalizeSearchTerm = (value) => {
     if (typeof value !== "string") {
@@ -38,7 +39,7 @@ const handleServerError = (res, error) => {
     console.error("Tag load error:", error.message);
     return res.status(500).json({
         success: false,
-        message: "Failed to load Project Tags. Please try again.",
+        message: "Failed to load Technology Tags. Please try again.",
     });
 };
 
@@ -55,10 +56,11 @@ const getTags = async (req, res) => {
         }
 
         // 2. Verify role
-        if (!isCandidate(req)) {
+        const role = getRequestRole(req);
+        if (!isSupportedRole(role)) {
             return res.status(403).json({
                 success: false,
-                message: "Only Candidates can search Project Tags.",
+                message: "You are not authorized to search Technology Tags.",
             });
         }
 
@@ -93,7 +95,7 @@ const getTags = async (req, res) => {
             }
             : {};
 
-        // 7. Query tags
+        // 7. Query tags (fetch at most MAX_LIMIT, then sort and slice)
         const tags = await prisma.tag.findMany({
             where,
             select: {
@@ -105,15 +107,11 @@ const getTags = async (req, res) => {
                 _count: {
                     select: {
                         projectTags: true,
+                        positionTags: true,
                     },
                 },
             },
             orderBy: [
-                {
-                    projectTags: {
-                        _count: "desc",
-                    },
-                },
                 {
                     name: "asc",
                 },
@@ -121,27 +119,48 @@ const getTags = async (req, res) => {
                     id: "asc",
                 },
             ],
-            take: limit,
+            take: MAX_LIMIT,
         });
 
-        // 8. Transform response
-        const responseTags = tags.map((tag) => ({
-            id: tag.id,
-            name: tag.name,
-            normalizedName: tag.normalizedName,
-            usageCount: tag._count.projectTags,
-            createdAt: tag.createdAt,
-            updatedAt: tag.updatedAt,
-        }));
+        // 8. Transform and sort response by total usage
+        const responseTags = tags.map((tag) => {
+            const projectUsageCount = tag._count.projectTags;
+            const positionUsageCount = tag._count.positionTags;
+            const usageCount = projectUsageCount + positionUsageCount;
+            return {
+                id: tag.id,
+                name: tag.name,
+                normalizedName: tag.normalizedName,
+                projectUsageCount,
+                positionUsageCount,
+                usageCount,
+                createdAt: tag.createdAt,
+                updatedAt: tag.updatedAt,
+            };
+        });
 
-        // 9. Return success response
+        // Sort by usageCount descending, then name ascending, then id ascending
+        responseTags.sort((a, b) => {
+            if (b.usageCount !== a.usageCount) {
+                return b.usageCount - a.usageCount;
+            }
+            if (a.name !== b.name) {
+                return a.name.localeCompare(b.name);
+            }
+            return a.id.localeCompare(b.id);
+        });
+
+        // 9. Limit to requested size
+        const limitedResponse = responseTags.slice(0, limit);
+
+        // 10. Return success response
         return res.status(200).json({
             success: true,
-            data: responseTags,
+            data: limitedResponse,
             meta: {
                 search: normalizedSearch,
                 limit: limit,
-                count: responseTags.length,
+                count: limitedResponse.length,
             },
         });
     } catch (error) {

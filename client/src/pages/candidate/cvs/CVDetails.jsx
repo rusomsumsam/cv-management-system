@@ -790,7 +790,7 @@ const CVDetails = () => {
                                         <div className="flex flex-wrap gap-1.5">
                                             {projectTags.map((tag) => (
                                                 <span
-                                                    key={tag.id || `${project.id}-${tag.name}`}
+                                                    key={tag.id || `${project.id}-${tag.name.toLowerCase()}`}
                                                     className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:border-blue-800/50 dark:bg-blue-900/30 dark:text-blue-300"
                                                 >
                                                     {tag.name}

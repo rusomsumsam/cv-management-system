@@ -7,7 +7,7 @@ const { getTags } = require("../controllers/tag.controller");
 router.get(
     "/",
     authMiddleware,
-    authorizeRoles("CANDIDATE"),
+    authorizeRoles("CANDIDATE", "RECRUITER", "ADMIN"),
     getTags
 );
 

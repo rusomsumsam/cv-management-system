@@ -1,4 +1,3 @@
-// client/src/pages/candidate/cvs/GeneratedCVView.jsx
 import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "../../../api/axios";
@@ -118,13 +117,46 @@ const formatProjectPeriod = (project) => {
 };
 
 const getProjectTags = (project) => {
-    if (!Array.isArray(project?.projectTags)) {
+    if (
+        !project ||
+        typeof project !== "object" ||
+        !Array.isArray(project.projectTags)
+    ) {
         return [];
     }
 
-    return project.projectTags
-        .map((projectTag) => projectTag?.tag)
-        .filter((tag) => tag && typeof tag.name === "string" && tag.name.trim());
+    const tags = [];
+    const seen = new Set();
+
+    for (const projectTag of project.projectTags) {
+        const tag = projectTag?.tag;
+        const rawName = tag?.name;
+
+        if (typeof rawName !== "string") {
+            continue;
+        }
+
+        const name = rawName.trim();
+
+        if (!name) {
+            continue;
+        }
+
+        const normalizedName = name.toLowerCase();
+
+        if (seen.has(normalizedName)) {
+            continue;
+        }
+
+        seen.add(normalizedName);
+
+        tags.push({
+            id: typeof tag.id === "string" ? tag.id.trim() : "",
+            name,
+        });
+    }
+
+    return tags;
 };
 
 const getSafeExternalUrl = (value) => {
@@ -386,7 +418,16 @@ const GeneratedCVView = () => {
         : [];
 
     const attributes = Array.isArray(cv.attributes) ? cv.attributes : [];
-    const profileProjects = Array.isArray(cv.profileProjects) ? cv.profileProjects : [];
+    const profileProjects =
+        Array.isArray(cv.profileProjects)
+            ? cv.profileProjects.filter(
+                (project) =>
+                    project &&
+                    typeof project === "object" &&
+                    typeof project.id === "string" &&
+                    project.id.trim()
+            )
+            : [];
 
     return (
         <div className="space-y-6">
@@ -636,16 +677,21 @@ const GeneratedCVView = () => {
                 <div className="space-y-4">
                     <div className="flex items-center gap-2 border-b-2 border-slate-100 dark:border-slate-800 pb-2">
                         <FolderKanban className="h-5 w-5 text-slate-700 dark:text-slate-300" aria-hidden="true" />
-                        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Profile Projects</h2>
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-white">Position-Matched Profile Projects</h2>
                     </div>
                     <div className="flex items-start gap-2 text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg">
                         <Info className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
                         <p>
-                            Projects are loaded dynamically from the Candidate Profile. Project periods and Technology Tags reflect the Candidate’s current Profile data.
+                            Projects are loaded dynamically from your Candidate Profile. Only Projects matching at least one Position Technology Tag are included, up to the Position's configured Project limit.
                         </p>
                     </div>
                     {profileProjects.length === 0 ? (
-                        <p className="text-slate-500 dark:text-slate-400 italic">No Profile Projects are currently available.</p>
+                        <div>
+                            <p className="text-slate-500 dark:text-slate-400 italic">No Profile Projects match this Position's Technology Tags.</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                Projects appear here only when at least one Project Technology Tag matches the Position and the Project is within the Position's configured limit.
+                            </p>
+                        </div>
                     ) : (
                         <div className="space-y-4">
                             {profileProjects.map((project) => {
@@ -669,14 +715,14 @@ const GeneratedCVView = () => {
                                             </div>
                                             <span
                                                 className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium shrink-0 ${project.isOngoing
-                                                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 print:bg-transparent print:text-black print:border print:border-slate-400"
-                                                        : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 print:bg-transparent print:text-black print:border print:border-slate-400"
+                                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 print:bg-transparent print:text-black print:border print:border-slate-400"
+                                                    : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 print:bg-transparent print:text-black print:border print:border-slate-400"
                                                     }`}
                                             >
                                                 {project.isOngoing ? "Ongoing" : "Completed"}
                                             </span>
                                         </div>
-                                        {project.description?.trim() ? (
+                                        {typeof project.description === "string" && project.description.trim() ? (
                                             <p className="mt-2 whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300 print:text-black">
                                                 {project.description}
                                             </p>
@@ -693,7 +739,7 @@ const GeneratedCVView = () => {
                                             <div className="flex flex-wrap gap-1.5">
                                                 {projectTags.map((tag) => (
                                                     <span
-                                                        key={tag.id || `${project.id}-${tag.name}`}
+                                                        key={tag.id || `${project.id}-${tag.name.toLowerCase()}`}
                                                         className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:border-blue-800/50 dark:bg-blue-900/30 dark:text-blue-300 print:border-slate-400 print:bg-transparent print:text-black"
                                                     >
                                                         {tag.name}

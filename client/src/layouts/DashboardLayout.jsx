@@ -19,7 +19,13 @@ const DashboardLayout = () => {
     };
 
     useEffect(() => {
-        setIsSidebarOpen(false);
+        const timeoutId = window.setTimeout(() => {
+            setIsSidebarOpen(false);
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
     }, [location.pathname]);
 
     if (loading) {
