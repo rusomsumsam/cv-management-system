@@ -1,3 +1,4 @@
+// client/src/pages/candidate/cvs/CVDetails.jsx
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -18,8 +19,108 @@ import {
     Upload,
     Info,
     Image as ImageIcon,
+    CalendarDays,
+    Tags,
 } from "lucide-react";
 import api from "../../../api/axios";
+
+// --- Helpers ---
+
+const getProjectDateOnlyValue = (value) => {
+    if (!value) {
+        return "";
+    }
+
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+        return value.slice(0, 10);
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return "";
+    }
+
+    return date.toISOString().slice(0, 10);
+};
+
+const formatProjectDateOnly = (value) => {
+    const dateOnly = getProjectDateOnlyValue(value);
+
+    if (!dateOnly) {
+        return "N/A";
+    }
+
+    const [year, month, day] = dateOnly.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+
+    if (
+        date.getUTCFullYear() !== year ||
+        date.getUTCMonth() !== month - 1 ||
+        date.getUTCDate() !== day
+    ) {
+        return "N/A";
+    }
+
+    return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+    }).format(date);
+};
+
+const formatProjectPeriod = (project) => {
+    const start = formatProjectDateOnly(project?.startDate);
+
+    if (project?.isOngoing === true) {
+        return start === "N/A" ? "Ongoing" : `${start} – Present`;
+    }
+
+    const end = formatProjectDateOnly(project?.endDate);
+
+    if (start === "N/A" && end === "N/A") {
+        return "Not specified";
+    }
+
+    if (start === "N/A") {
+        return `Until ${end}`;
+    }
+
+    if (end === "N/A") {
+        return `From ${start}`;
+    }
+
+    return `${start} – ${end}`;
+};
+
+const getProjectTags = (project) => {
+    if (!Array.isArray(project?.projectTags)) {
+        return [];
+    }
+
+    return project.projectTags
+        .map((projectTag) => projectTag?.tag)
+        .filter((tag) => tag && typeof tag.name === "string" && tag.name.trim());
+};
+
+const getSafeExternalUrl = (value) => {
+    if (typeof value !== "string") {
+        return "";
+    }
+
+    try {
+        const url = new URL(value.trim());
+
+        if (!["http:", "https:"].includes(url.protocol)) {
+            return "";
+        }
+
+        return url.toString();
+    } catch {
+        return "";
+    }
+};
 
 const CVDetails = () => {
     const { id } = useParams();
@@ -171,9 +272,20 @@ const CVDetails = () => {
         }
 
         if (type === "IMAGE") {
+            const safeUrl = getSafeExternalUrl(String(value));
+
+            if (!safeUrl) {
+                return (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
+                        <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                        Invalid external image URL
+                    </span>
+                );
+            }
+
             return (
                 <a
-                    href={String(value)}
+                    href={safeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 rounded text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-blue-400"
@@ -398,8 +510,8 @@ const CVDetails = () => {
                     <div className="flex flex-wrap items-center gap-3">
                         <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${cv.status === "PUBLISHED"
-                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                    : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                                 }`}
                         >
                             {getStatusIcon(cv.status)}
@@ -628,33 +740,84 @@ const CVDetails = () => {
                 </div>
                 {profileProjects.length > 0 ? (
                     <div className="space-y-4">
-                        {profileProjects.map((project) => (
-                            <div
-                                key={project.id}
-                                className="rounded-lg border border-slate-200 dark:border-slate-700 p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                            >
-                                <Link
-                                    to={`/projects/${project.id}`}
-                                    className="text-sm font-medium text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded dark:text-blue-400 dark:focus:ring-offset-slate-900"
+                        {profileProjects.map((project) => {
+                            const projectTags = getProjectTags(project);
+                            const projectPeriod = formatProjectPeriod(project);
+
+                            return (
+                                <div
+                                    key={project.id}
+                                    className="rounded-lg border border-slate-200 dark:border-slate-700 p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                                 >
-                                    {project.title || "Untitled Project"}
-                                </Link>
-                                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                                    {project.description || "No description provided."}
-                                </p>
-                                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                                    Created {formatDate(project.createdAt)}
-                                </p>
-                            </div>
-                        ))}
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-2">
+                                        <div className="min-w-0 flex-1">
+                                            <Link
+                                                to={`/projects/${project.id}`}
+                                                className="text-sm font-medium text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded dark:text-blue-400 dark:focus:ring-offset-slate-900"
+                                            >
+                                                {project.title || "Untitled Project"}
+                                            </Link>
+                                            <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                                <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                                                <span>{projectPeriod}</span>
+                                            </div>
+                                        </div>
+                                        <span
+                                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium shrink-0 ${project.isOngoing
+                                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                                    : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                                }`}
+                                        >
+                                            {project.isOngoing ? "Ongoing" : "Completed"}
+                                        </span>
+                                    </div>
+
+                                    {project.description?.trim() ? (
+                                        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-300">
+                                            {project.description}
+                                        </p>
+                                    ) : (
+                                        <p className="mt-2 text-sm italic text-slate-500 dark:text-slate-400">
+                                            No description provided.
+                                        </p>
+                                    )}
+
+                                    <div className="mb-2 mt-3 flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                        <Tags className="h-3.5 w-3.5" aria-hidden="true" />
+                                        Technology Tags
+                                    </div>
+                                    {projectTags.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {projectTags.map((tag) => (
+                                                <span
+                                                    key={tag.id || `${project.id}-${tag.name}`}
+                                                    className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:border-blue-800/50 dark:bg-blue-900/30 dark:text-blue-300"
+                                                >
+                                                    {tag.name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm italic text-slate-500 dark:text-slate-400">
+                                            No Technology Tags added.
+                                        </p>
+                                    )}
+
+                                    <div className="flex items-center gap-4 mt-3 text-xs text-slate-400 dark:text-slate-500">
+                                        <span>Created {formatDate(project.createdAt)}</span>
+                                        <span>Updated {formatDate(project.updatedAt)}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
                         <div className="flex items-start gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 mt-2">
                             <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
                             <div>
                                 <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                                    Projects are loaded dynamically from the Candidate Profile.
+                                    Candidate Profile Projects
                                 </p>
                                 <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
-                                    Position tag filtering and maximum Project limits will be added after the related schema migration.
+                                    Projects are loaded dynamically from your Candidate Profile. Project periods and Technology Tags reflect your current Profile data.
                                 </p>
                             </div>
                         </div>
@@ -750,8 +913,8 @@ const CVDetails = () => {
                                         <tr
                                             key={attribute.positionAttributeId}
                                             className={`${isMissing || isPublishMissing
-                                                    ? "bg-red-50 dark:bg-red-900/10"
-                                                    : "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                                                ? "bg-red-50 dark:bg-red-900/10"
+                                                : "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                                                 }`}
                                         >
                                             <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">

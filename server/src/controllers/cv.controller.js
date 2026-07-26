@@ -381,6 +381,67 @@ const getCVDetailWithPositionAttributesSelect = (role, currentUserId) => {
 const cvMutationSelect = getCVDetailSelect("", "");
 
 /**
+ * Profile Project selection with period and relational tags
+ */
+const profileProjectSelect = {
+    id: true,
+    title: true,
+    description: true,
+    startDate: true,
+    endDate: true,
+    isOngoing: true,
+    createdAt: true,
+    updatedAt: true,
+    projectTags: {
+        select: {
+            id: true,
+            tagId: true,
+            createdAt: true,
+            tag: {
+                select: {
+                    id: true,
+                    name: true,
+                    normalizedName: true,
+                },
+            },
+        },
+        orderBy: [
+            {
+                createdAt: "asc",
+            },
+            {
+                id: "asc",
+            },
+        ],
+    },
+};
+
+const profileProjectOrderBy = [
+    {
+        startDate: "desc",
+    },
+    {
+        createdAt: "desc",
+    },
+    {
+        id: "asc",
+    },
+];
+
+/**
+ * Reusable Profile Project loader
+ */
+const loadProfileProjects = async (client, userId) => {
+    return client.project.findMany({
+        where: {
+            userId,
+        },
+        select: profileProjectSelect,
+        orderBy: profileProjectOrderBy,
+    });
+};
+
+/**
  * Create a new CV
  */
 const createCV = async (req, res) => {
@@ -991,21 +1052,11 @@ const getCVById = async (req, res) => {
                 }
             );
 
-            const profileProjects = await prisma.project.findMany({
-                where: {
-                    userId: cv.userId,
-                },
-                select: {
-                    id: true,
-                    title: true,
-                    description: true,
-                    createdAt: true,
-                    updatedAt: true,
-                },
-                orderBy: {
-                    createdAt: "desc",
-                },
-            });
+            // 5. Load relational Profile Projects with period and tags
+            const profileProjects = await loadProfileProjects(
+                prisma,
+                cv.userId
+            );
 
             const { positionAttributes, ...cleanPosition } = cv.position;
 
@@ -1135,21 +1186,11 @@ const getCVById = async (req, res) => {
                 }
             );
 
-            const profileProjects = await prisma.project.findMany({
-                where: {
-                    userId: cv.userId,
-                },
-                select: {
-                    id: true,
-                    title: true,
-                    description: true,
-                    createdAt: true,
-                    updatedAt: true,
-                },
-                orderBy: {
-                    createdAt: "desc",
-                },
-            });
+            // 5. Load relational Profile Projects with period and tags
+            const profileProjects = await loadProfileProjects(
+                prisma,
+                cv.userId
+            );
 
             const { positionAttributes, ...cleanPosition } = cv.position;
             const { likes: currentUserLikes, ...cvWithoutCurrentUserLikes } = cv;
@@ -1233,21 +1274,11 @@ const getCVById = async (req, res) => {
             }
         );
 
-        const profileProjects = await prisma.project.findMany({
-            where: {
-                userId: cv.userId,
-            },
-            select: {
-                id: true,
-                title: true,
-                description: true,
-                createdAt: true,
-                updatedAt: true,
-            },
-            orderBy: {
-                createdAt: "desc",
-            },
-        });
+        // Load relational Profile Projects with period and tags
+        const profileProjects = await loadProfileProjects(
+            prisma,
+            cv.userId
+        );
 
         const { positionAttributes, ...cleanPosition } = cv.position;
         const { likes: currentUserLikes, ...cvWithoutCurrentUserLikes } = cv;
