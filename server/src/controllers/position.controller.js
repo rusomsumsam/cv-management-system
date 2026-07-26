@@ -1,4 +1,7 @@
 const { Prisma, PrismaClient } = require("@prisma/client");
+const {
+    evaluatePositionEligibility,
+} = require("../services/positionEligibility.service");
 
 const prisma = new PrismaClient();
 
@@ -123,6 +126,8 @@ const positionSelect = {
     department: true,
     deadline: true,
     isActive: true,
+    accessType: true,
+    accessRuleLogic: true,
     userId: true,
     createdAt: true,
     updatedAt: true,
@@ -141,6 +146,48 @@ const positionSelect = {
             discussions: true,
         },
     },
+};
+
+const accessRuleSelect = {
+    id: true,
+    attributeId: true,
+    operator: true,
+    value: true,
+    attribute: {
+        select: {
+            id: true,
+            name: true,
+            category: true,
+            type: true,
+        },
+    },
+};
+
+const candidatePositionSelect = {
+    ...positionSelect,
+    accessRules: {
+        select: accessRuleSelect,
+        orderBy: [
+            {
+                createdAt: "asc",
+            },
+            {
+                id: "asc",
+            },
+        ],
+    },
+};
+
+const getSafeEligibilitySummary = (eligibility) => {
+    return {
+        eligible: eligibility.eligible,
+        reason: eligibility.reason,
+        accessType: eligibility.accessType,
+        accessRuleLogic: eligibility.accessRuleLogic,
+        totalRules: eligibility.totalRules,
+        passedRules: eligibility.passedRules,
+        failedRules: eligibility.failedRules,
+    };
 };
 
 // --- Controllers ---
@@ -257,11 +304,67 @@ const getPositions = async (req, res) => {
             });
         }
 
-        let where = {};
-
+        // Candidate branch: eligibility-aware listing
         if (role === "CANDIDATE") {
-            where = { isActive: true };
-        } else if (role === "RECRUITER") {
+            const candidatePositions = await prisma.position.findMany({
+                where: {
+                    isActive: true,
+                },
+                select: candidatePositionSelect,
+                orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+            });
+
+            // Collect all unique attribute IDs from all access rules across all positions
+            const attributeIds = [
+                ...new Set(
+                    candidatePositions.flatMap((position) =>
+                        Array.isArray(position.accessRules)
+                            ? position.accessRules.map((rule) => rule.attributeId).filter(Boolean)
+                            : []
+                    )
+                ),
+            ];
+
+            let userAttributes = [];
+            if (attributeIds.length > 0) {
+                userAttributes = await prisma.userAttribute.findMany({
+                    where: {
+                        userId: req.user.id,
+                        attributeId: {
+                            in: attributeIds,
+                        },
+                    },
+                    select: {
+                        attributeId: true,
+                        value: true,
+                    },
+                });
+            }
+
+            const candidateVisiblePositions = candidatePositions
+                .map((position) => {
+                    const eligibility = evaluatePositionEligibility(position, userAttributes);
+                    const { accessRules, ...cleanPosition } = position;
+                    return {
+                        position: cleanPosition,
+                        eligibility,
+                    };
+                })
+                .filter((item) => item.eligibility.eligible)
+                .map((item) => ({
+                    ...item.position,
+                    eligibility: getSafeEligibilitySummary(item.eligibility),
+                }));
+
+            return res.status(200).json({
+                success: true,
+                data: candidateVisiblePositions,
+            });
+        }
+
+        // Recruiter and Admin branch
+        let where = {};
+        if (role === "RECRUITER") {
             where = { userId: req.user.id };
         } else if (role === "ADMIN") {
             where = {};
@@ -307,11 +410,70 @@ const getPositionById = async (req, res) => {
             });
         }
 
-        let where = { id };
-
+        // Candidate branch: eligibility-aware detail view
         if (role === "CANDIDATE") {
-            where = { id, isActive: true };
-        } else if (role === "RECRUITER") {
+            const candidatePosition = await prisma.position.findFirst({
+                where: {
+                    id,
+                    isActive: true,
+                },
+                select: candidatePositionSelect,
+            });
+
+            if (!candidatePosition) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Position not found.",
+                });
+            }
+
+            const rules = Array.isArray(candidatePosition.accessRules)
+                ? candidatePosition.accessRules
+                : [];
+
+            const attributeIds = [
+                ...new Set(rules.map((rule) => rule.attributeId).filter(Boolean)),
+            ];
+
+            let userAttributes = [];
+            if (attributeIds.length > 0) {
+                userAttributes = await prisma.userAttribute.findMany({
+                    where: {
+                        userId: req.user.id,
+                        attributeId: {
+                            in: attributeIds,
+                        },
+                    },
+                    select: {
+                        attributeId: true,
+                        value: true,
+                    },
+                });
+            }
+
+            const eligibility = evaluatePositionEligibility(candidatePosition, userAttributes);
+
+            if (!eligibility.eligible) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Position not found.",
+                });
+            }
+
+            const { accessRules, ...cleanPosition } = candidatePosition;
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    ...cleanPosition,
+                    eligibility: getSafeEligibilitySummary(eligibility),
+                },
+            });
+        }
+
+        // Recruiter and Admin branch
+        let where = { id };
+        if (role === "RECRUITER") {
             where = { id, userId: req.user.id };
         } else if (role === "ADMIN") {
             where = { id };

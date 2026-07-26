@@ -1,4 +1,9 @@
 const { Prisma, PrismaClient } = require("@prisma/client");
+const {
+    evaluatePositionEligibility,
+    loadAndEvaluatePositionEligibility,
+} = require("../services/positionEligibility.service");
+
 const prisma = new PrismaClient();
 
 /**
@@ -96,7 +101,42 @@ class CVRequestError extends Error {
 }
 
 /**
- * Dynamic selection for CV list items
+ * Position eligibility select for in-memory evaluation
+ */
+const positionEligibilitySelect = {
+    id: true,
+    title: true,
+    isActive: true,
+    accessType: true,
+    accessRuleLogic: true,
+    accessRules: {
+        select: {
+            id: true,
+            attributeId: true,
+            operator: true,
+            value: true,
+            attribute: {
+                select: {
+                    id: true,
+                    name: true,
+                    category: true,
+                    type: true,
+                },
+            },
+        },
+        orderBy: [
+            {
+                createdAt: "asc",
+            },
+            {
+                id: "asc",
+            },
+        ],
+    },
+};
+
+/**
+ * Dynamic selection for CV list items (Recruiter/Admin)
  */
 const getCVListSelect = (role, currentUserId) => {
     const select = {
@@ -153,6 +193,52 @@ const getCVListSelect = (role, currentUserId) => {
 
     return select;
 };
+
+/**
+ * Candidate-specific CV list select with eligibility data
+ */
+const getCandidateCVListSelect = () => ({
+    id: true,
+    fullName: true,
+    email: true,
+    phone: true,
+    summary: true,
+    skills: true,
+    education: true,
+    experience: true,
+    projects: true,
+    status: true,
+    userId: true,
+    positionId: true,
+    createdAt: true,
+    updatedAt: true,
+    position: {
+        select: {
+            id: true,
+            title: true,
+            company: true,
+            location: true,
+            department: true,
+            isActive: true,
+            accessType: true,
+            accessRuleLogic: true,
+            accessRules: positionEligibilitySelect.accessRules,
+        },
+    },
+    user: {
+        select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            profilePhoto: true,
+        },
+    },
+    _count: {
+        select: {
+            likes: true,
+        },
+    },
+});
 
 /**
  * Dynamic selection for CV details (without positionAttributes)
@@ -365,6 +451,21 @@ const createCV = async (req, res) => {
 
     try {
         const newCV = await prisma.$transaction(async (tx) => {
+            // 1. Evaluate Position eligibility
+            const eligibilityResult = await loadAndEvaluatePositionEligibility(
+                tx,
+                normalizedPositionId,
+                req.user.id
+            );
+
+            if (
+                !eligibilityResult.position ||
+                eligibilityResult.eligibility?.eligible !== true
+            ) {
+                throw new CVRequestError(404, "Position not found.");
+            }
+
+            // 2. Load Position and Position Attributes for CV generation
             const position = await tx.position.findUnique({
                 where: { id: normalizedPositionId },
                 select: {
@@ -378,17 +479,16 @@ const createCV = async (req, res) => {
                 },
             });
 
+            // Defensive check - should never fail after eligibility passed, but safe
             if (!position) {
                 throw new CVRequestError(404, "Position not found.");
             }
 
             if (!position.isActive) {
-                throw new CVRequestError(
-                    403,
-                    "This position is not available for CV creation."
-                );
+                throw new CVRequestError(404, "Position not found.");
             }
 
+            // 3. Check for existing CV
             const existingCV = await tx.cV.findUnique({
                 where: {
                     userId_positionId: {
@@ -408,6 +508,7 @@ const createCV = async (req, res) => {
                 );
             }
 
+            // 4. Ensure all Position Attributes have UserAttribute records
             const positionAttributeIds = position.positionAttributes.map(
                 (item) => item.attributeId
             );
@@ -447,6 +548,7 @@ const createCV = async (req, res) => {
                 });
             }
 
+            // 5. Create the Draft CV
             const createdCV = await tx.cV.create({
                 data: {
                     fullName: normalizedFullName,
@@ -514,16 +616,85 @@ const getCVs = async (req, res) => {
         });
     }
 
+    // Candidate branch: eligibility-aware listing
+    if (role === "CANDIDATE") {
+        try {
+            // 1. Load Candidate's CVs with eligibility data
+            const candidateCVs = await prisma.cV.findMany({
+                where: {
+                    userId: req.user.id,
+                    position: {
+                        isActive: true,
+                    },
+                },
+                select: getCandidateCVListSelect(),
+                orderBy: [
+                    { updatedAt: "desc" },
+                    { createdAt: "desc" },
+                ],
+            });
+
+            // 2. Collect unique rule attribute IDs across all positions
+            const ruleAttributeIds = [
+                ...new Set(
+                    candidateCVs.flatMap((cv) => {
+                        const rules = Array.isArray(cv.position?.accessRules)
+                            ? cv.position.accessRules
+                            : [];
+                        return rules.map((rule) => rule.attributeId).filter(Boolean);
+                    })
+                ),
+            ];
+
+            // 3. Load Candidate's relevant UserAttributes in one query
+            let candidateUserAttributes = [];
+            if (ruleAttributeIds.length > 0) {
+                candidateUserAttributes = await prisma.userAttribute.findMany({
+                    where: {
+                        userId: req.user.id,
+                        attributeId: {
+                            in: ruleAttributeIds,
+                        },
+                    },
+                    select: {
+                        attributeId: true,
+                        value: true,
+                    },
+                });
+            }
+
+            // 4. Evaluate each Position in memory and filter eligible CVs
+            const visibleCandidateCVs = candidateCVs
+                .map((cv) => {
+                    const eligibility = evaluatePositionEligibility(
+                        cv.position,
+                        candidateUserAttributes
+                    );
+                    const { accessRules, ...cleanPosition } = cv.position;
+                    return {
+                        cv: {
+                            ...cv,
+                            position: cleanPosition,
+                        },
+                        eligible: eligibility.eligible,
+                    };
+                })
+                .filter((item) => item.eligible)
+                .map((item) => item.cv);
+
+            return res.status(200).json({
+                success: true,
+                data: visibleCandidateCVs,
+            });
+        } catch (error) {
+            return handleServerError(res, "load", error);
+        }
+    }
+
+    // Recruiter and Admin branch
     let where = {};
 
-    if (role === "CANDIDATE") {
-        where = {
-            userId: req.user.id,
-            position: {
-                isActive: true,
-            },
-        };
-    } else if (role === "RECRUITER") {
+    if (role === "RECRUITER") {
         where = {
             status: "PUBLISHED",
             position: {
@@ -595,17 +766,153 @@ const getCVById = async (req, res) => {
     }
 
     try {
+        // Candidate branch: eligibility-aware detail view
+        if (role === "CANDIDATE") {
+            // 1. Minimal owned-CV lookup to check ownership and get positionId
+            const candidateCV = await prisma.cV.findFirst({
+                where: {
+                    id,
+                    userId: req.user.id,
+                    position: {
+                        isActive: true,
+                    },
+                },
+                select: {
+                    id: true,
+                    positionId: true,
+                },
+            });
+
+            if (!candidateCV) {
+                return res.status(404).json({
+                    success: false,
+                    message: "CV not found.",
+                });
+            }
+
+            // 2. Evaluate current Position eligibility
+            const eligibilityResult = await loadAndEvaluatePositionEligibility(
+                prisma,
+                candidateCV.positionId,
+                req.user.id
+            );
+
+            if (
+                !eligibilityResult.position ||
+                eligibilityResult.eligibility?.eligible !== true
+            ) {
+                return res.status(404).json({
+                    success: false,
+                    message: "CV not found.",
+                });
+            }
+
+            // 3. Load full CV details
+            const cv = await prisma.cV.findFirst({
+                where: {
+                    id,
+                    userId: req.user.id,
+                    position: {
+                        isActive: true,
+                    },
+                },
+                select: getCVDetailWithPositionAttributesSelect(role, req.user.id),
+            });
+
+            if (!cv) {
+                return res.status(404).json({
+                    success: false,
+                    message: "CV not found.",
+                });
+            }
+
+            // 4. Build dynamic attributes and profile projects (preserved)
+            const attributeIds =
+                cv.position.positionAttributes?.map(
+                    (positionAttribute) => positionAttribute.attributeId
+                ) || [];
+
+            let userAttributes = [];
+            if (attributeIds.length > 0) {
+                userAttributes = await prisma.userAttribute.findMany({
+                    where: {
+                        userId: cv.userId,
+                        attributeId: {
+                            in: attributeIds,
+                        },
+                    },
+                    select: {
+                        id: true,
+                        attributeId: true,
+                        value: true,
+                        updatedAt: true,
+                    },
+                });
+            }
+
+            const userAttributeMap = new Map(
+                userAttributes.map((userAttribute) => [
+                    userAttribute.attributeId,
+                    userAttribute,
+                ])
+            );
+
+            const dynamicAttributes = cv.position.positionAttributes.map(
+                (positionAttribute) => {
+                    const userAttribute = userAttributeMap.get(
+                        positionAttribute.attributeId
+                    );
+
+                    const value = userAttribute?.value ?? null;
+
+                    return {
+                        positionAttributeId: positionAttribute.id,
+                        attributeId: positionAttribute.attributeId,
+                        name: positionAttribute.attribute.name,
+                        category: positionAttribute.attribute.category,
+                        type: positionAttribute.attribute.type,
+                        userAttributeId: userAttribute?.id || null,
+                        value,
+                        isMissing: isMissingValue(value),
+                    };
+                }
+            );
+
+            const profileProjects = await prisma.project.findMany({
+                where: {
+                    userId: cv.userId,
+                },
+                select: {
+                    id: true,
+                    title: true,
+                    description: true,
+                    createdAt: true,
+                    updatedAt: true,
+                },
+                orderBy: {
+                    createdAt: "desc",
+                },
+            });
+
+            const { positionAttributes, ...cleanPosition } = cv.position;
+            
+            const responseData = {
+                ...cvWithoutCurrentUserLikes,
+                position: cleanPosition,
+                attributes: dynamicAttributes,
+                profileProjects,
+            };
+
+            return res.status(200).json({
+                success: true,
+                data: responseData,
+            });
+        }
+
+        // Recruiter and Admin branch
         let where = { id };
 
-        if (role === "CANDIDATE") {
-            where = {
-                id,
-                userId: req.user.id,
-                position: {
-                    isActive: true,
-                },
-            };
-        } else if (role === "RECRUITER") {
+        if (role === "RECRUITER") {
             where = {
                 id,
                 status: "PUBLISHED",
@@ -696,8 +1003,6 @@ const getCVById = async (req, res) => {
         });
 
         const { positionAttributes, ...cleanPosition } = cv.position;
-
-        // Extract temporary likes array for Recruiters and clean it from the response
         const { likes: currentUserLikes, ...cvWithoutCurrentUserLikes } = cv;
 
         const responseData = {
@@ -789,6 +1094,25 @@ const updateCV = async (req, res) => {
                 success: false,
                 message: "CV not found.",
             });
+        }
+
+        // Candidate eligibility precheck for all updates (including publish)
+        if (role === "CANDIDATE") {
+            const eligibilityResult = await loadAndEvaluatePositionEligibility(
+                prisma,
+                existingCV.positionId,
+                req.user.id
+            );
+
+            if (
+                !eligibilityResult.position ||
+                eligibilityResult.eligibility?.eligible !== true
+            ) {
+                return res.status(404).json({
+                    success: false,
+                    message: "CV not found.",
+                });
+            }
         }
 
         const updateData = {};
@@ -934,6 +1258,22 @@ const updateCV = async (req, res) => {
 
                         if (!txCV) {
                             throw new CVRequestError(404, "CV not found.");
+                        }
+
+                        // Candidate eligibility recheck inside transaction
+                        if (role === "CANDIDATE") {
+                            const eligibilityResult = await loadAndEvaluatePositionEligibility(
+                                tx,
+                                txCV.positionId,
+                                req.user.id
+                            );
+
+                            if (
+                                !eligibilityResult.position ||
+                                eligibilityResult.eligibility?.eligible !== true
+                            ) {
+                                throw new CVRequestError(404, "CV not found.");
+                            }
                         }
 
                         // Load all PositionAttributes for this CV's Position

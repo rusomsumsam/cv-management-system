@@ -61,6 +61,7 @@ import Discussions from "../pages/discussions/Discussions";
 import CreateDiscussion from "../pages/discussions/CreateDiscussion";
 import DiscussionDetails from "../pages/discussions/DiscussionDetails";
 import EditProfile from "../pages/candidate/profile/EditProfile";
+import PositionAccessRules from "../pages/recruiter/positions/PositionAccessRules";
 
 const AppRoutes = () => {
     return (
@@ -312,6 +313,15 @@ const AppRoutes = () => {
                     element={
                         <ProtectedRoute allowedRoles={["RECRUITER"]}>
                             <PositionAttributes />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/positions/:id/access-rules"
+                    element={
+                        <ProtectedRoute allowedRoles={["RECRUITER"]}>
+                            <PositionAccessRules />
                         </ProtectedRoute>
                     }
                 />
