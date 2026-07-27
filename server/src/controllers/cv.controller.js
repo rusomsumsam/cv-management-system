@@ -1,3 +1,4 @@
+// server/src/controllers/cv.controller.js
 const { Prisma, PrismaClient } = require("@prisma/client");
 const {
     evaluatePositionEligibility,
@@ -139,6 +140,52 @@ const positionEligibilitySelect = {
 };
 
 /**
+ * Apply authoritative user identity over legacy CV fields
+ */
+const applyAuthoritativeCVIdentity = (cv) => {
+    if (!cv || typeof cv !== "object" || Array.isArray(cv)) {
+        return cv;
+    }
+
+    const firstName =
+        typeof cv.user?.firstName === "string"
+            ? cv.user.firstName.trim()
+            : "";
+
+    const lastName =
+        typeof cv.user?.lastName === "string"
+            ? cv.user.lastName.trim()
+            : "";
+
+    const profileFullName =
+        [firstName, lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+    const fallbackFullName =
+        typeof cv.fullName === "string"
+            ? cv.fullName.trim()
+            : "";
+
+    const profileEmail =
+        typeof cv.user?.email === "string"
+            ? cv.user.email.trim().toLowerCase()
+            : "";
+
+    const fallbackEmail =
+        typeof cv.email === "string"
+            ? cv.email.trim().toLowerCase()
+            : "";
+
+    return {
+        ...cv,
+        fullName: profileFullName || fallbackFullName,
+        email: profileEmail || fallbackEmail,
+    };
+};
+
+/**
  * Dynamic selection for CV list items (Admin)
  */
 const getAdminCVListSelect = () => ({
@@ -172,6 +219,7 @@ const getAdminCVListSelect = () => ({
             firstName: true,
             lastName: true,
             profilePhoto: true,
+            email: true,
         },
     },
     _count: {
@@ -218,6 +266,7 @@ const getRecruiterCVListSelect = (currentUserId) => ({
             firstName: true,
             lastName: true,
             profilePhoto: true,
+            email: true,
         },
     },
     _count: {
@@ -273,6 +322,7 @@ const getCandidateCVListSelect = () => ({
             firstName: true,
             lastName: true,
             profilePhoto: true,
+            email: true,
         },
     },
     _count: {
@@ -613,7 +663,7 @@ const createCV = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            data: newCV,
+            data: applyAuthoritativeCVIdentity(newCV),
         });
     } catch (error) {
         if (error instanceof CVRequestError) {
@@ -722,7 +772,7 @@ const getCVs = async (req, res) => {
                     };
                 })
                 .filter((item) => item.eligible)
-                .map((item) => item.cv);
+                .map((item) => applyAuthoritativeCVIdentity(item.cv));
 
             return res.status(200).json({
                 success: true,
@@ -823,7 +873,7 @@ const getCVs = async (req, res) => {
                     };
                 })
                 .filter((item) => item.eligible)
-                .map((item) => item.cv);
+                .map((item) => applyAuthoritativeCVIdentity(item.cv));
 
             return res.status(200).json({
                 success: true,
@@ -846,7 +896,7 @@ const getCVs = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: cvs,
+            data: cvs.map(applyAuthoritativeCVIdentity),
         });
     } catch (error) {
         return handleServerError(res, "load", error);
@@ -1012,7 +1062,7 @@ const getCVById = async (req, res) => {
 
             return res.status(200).json({
                 success: true,
-                data: responseData,
+                data: applyAuthoritativeCVIdentity(responseData),
             });
         }
 
@@ -1150,7 +1200,7 @@ const getCVById = async (req, res) => {
 
             return res.status(200).json({
                 success: true,
-                data: responseData,
+                data: applyAuthoritativeCVIdentity(responseData),
             });
         }
 
@@ -1237,7 +1287,7 @@ const getCVById = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: responseData,
+            data: applyAuthoritativeCVIdentity(responseData),
         });
     } catch (error) {
         return handleServerError(res, "load", error);
@@ -1556,7 +1606,7 @@ const updateCV = async (req, res) => {
 
                     return res.status(200).json({
                         success: true,
-                        data: updatedCV,
+                        data: applyAuthoritativeCVIdentity(updatedCV),
                     });
                 } catch (txError) {
                     if (txError instanceof CVRequestError) {
@@ -1590,7 +1640,7 @@ const updateCV = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: updatedCV,
+            data: applyAuthoritativeCVIdentity(updatedCV),
         });
     } catch (error) {
         if (error instanceof CVRequestError) {
