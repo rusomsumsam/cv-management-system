@@ -1,5 +1,6 @@
-import { Navigate, useLocation } from "react-router-dom";
-import useAuth from "../hooks/useAuth";
+// client/src/routes/ProtectedRoute.jsx
+import { Navigate, useLocation } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
 
 const ProtectedRoute = ({
     children,
@@ -31,19 +32,26 @@ const ProtectedRoute = ({
         );
     }
 
+    // Normalize allowedRoles
+    const normalizedAllowedRoles = Array.isArray(allowedRoles)
+        ? allowedRoles
+            .filter((role) => typeof role === 'string')
+            .map((role) => role.trim().toUpperCase())
+            .filter(Boolean)
+        : [];
+
     // If no role restrictions, allow access
-    if (!allowedRoles || allowedRoles.length === 0) {
+    if (normalizedAllowedRoles.length === 0) {
         return children;
     }
 
-    const userRole = user?.role?.toUpperCase() || "";
-    const normalizedAllowedRoles = allowedRoles.map((role) =>
-        role.toUpperCase()
-    );
+    const userRole = typeof user?.role === 'string'
+        ? user.role.trim().toUpperCase()
+        : '';
 
     // ADMIN always has access to all routes
     const hasRequiredRole =
-        userRole === "ADMIN" ||
+        userRole === 'ADMIN' ||
         normalizedAllowedRoles.includes(userRole);
 
     if (!hasRequiredRole) {
