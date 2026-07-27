@@ -85,7 +85,15 @@ const Navbar = () => {
     };
 
     const toggleLanguage = () => {
-        setLanguage((prev) => (prev === 'en' ? 'bn' : 'en'));
+        setLanguage((previous) => {
+            const nextLanguage = previous === 'en' ? 'bn' : 'en';
+            window.dispatchEvent(
+                new CustomEvent('cvms-language-change', {
+                    detail: nextLanguage,
+                })
+            );
+            return nextLanguage;
+        });
     };
 
     const handleLogout = async () => {

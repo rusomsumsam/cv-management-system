@@ -13,6 +13,7 @@ const discussionRoutes = require("./discussion.route");
 const likeRoutes = require("./like.route");
 const searchRoutes = require("./search.route");
 const tagRoutes = require("./tag.route");
+const publicHomeRoutes = require("./publicHome.route");
 
 
 router.get("/", (req, res) => {
@@ -39,6 +40,7 @@ router.use("/tags", tagRoutes);
 router.use("/discussions", discussionRoutes);
 router.use("/likes", likeRoutes);
 router.use("/search", searchRoutes);
+router.use("/public/home", publicHomeRoutes);
 
 
 module.exports = router;

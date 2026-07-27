@@ -138,8 +138,17 @@ const PublicPositions = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [retryCounter, setRetryCounter] = useState(0);
-    const [searchTerm, setSearchTerm] = useState("");
 
+    // Initialize searchTerm from URL query
+    const queryFromUrl = searchParams.get("query");
+    const normalizedQueryFromUrl =
+        typeof queryFromUrl === "string"
+            ? queryFromUrl.trim().slice(0, 100)
+            : "";
+
+    const [searchTerm, setSearchTerm] = useState(() => normalizedQueryFromUrl);
+
+    // Fetch positions
     useEffect(() => {
         let cancelled = false;
 
@@ -273,29 +282,6 @@ const PublicPositions = () => {
         );
     }
 
-    if (filteredPositions.length === 0 && normalizedSearchTerm) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="text-center">
-                    <Search className="h-16 w-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" aria-hidden="true" />
-                    <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                        No matching Positions found
-                    </h2>
-                    <p className="text-slate-500 dark:text-slate-400 mt-2">
-                        Try a different search term.
-                    </p>
-                    <button
-                        type="button"
-                        onClick={handleClearSearch}
-                        className="mt-4 px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-                    >
-                        Clear Search
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-6">
             {/* Page Header */}
@@ -343,101 +329,123 @@ const PublicPositions = () => {
                 />
             </div>
 
-            {/* Table */}
-            <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-                            <tr>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    Position
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    <div className="flex items-center gap-1">
-                                        <Building2 className="w-4 h-4" aria-hidden="true" />
-                                        Company
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    <div className="flex items-center gap-1">
-                                        <MapPin className="w-4 h-4" aria-hidden="true" />
-                                        Location
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    Department
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    Technology Tags
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    Max Projects
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    <div className="flex items-center gap-1">
-                                        <Calendar className="w-4 h-4" aria-hidden="true" />
-                                        Deadline
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    <div className="flex items-center gap-1">
-                                        <FileText className="w-4 h-4" aria-hidden="true" />
-                                        CVs
-                                    </div>
-                                </th>
-                                <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
-                                    <div className="flex items-center gap-1">
-                                        <Clock className="w-4 h-4" aria-hidden="true" />
-                                        Updated
-                                    </div>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {filteredPositions.map((position) => (
-                                <tr
-                                    key={position.id}
-                                    className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                                >
-                                    <td className="px-6 py-4">
-                                        <Link
-                                            to={`/public/positions/${position.id}`}
-                                            className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 focus:outline-none focus:underline"
-                                        >
-                                            {position.title}
-                                        </Link>
-                                        {renderDescriptionPreview(position.description)}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
-                                        {position.company || "—"}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
-                                        {position.location || "—"}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
-                                        {position.department || "—"}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        {renderTagChips(position)}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
-                                        {safeMaxProjects(position.maxProjects)} Projects
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
-                                        {formatDate(position.deadline)}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
-                                        {safeCvsCount(position)}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
-                                        {formatDate(position.updatedAt)}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            {/* Search results count / empty state */}
+            {filteredPositions.length === 0 && normalizedSearchTerm && (
+                <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-8 text-center">
+                    <Search className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" aria-hidden="true" />
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                        No matching Positions found
+                    </h3>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1">
+                        Try a different search term.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={handleClearSearch}
+                        className="mt-4 px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                    >
+                        Clear Search
+                    </button>
                 </div>
-            </div>
+            )}
+
+            {/* Table - only render when there are filtered results */}
+            {filteredPositions.length > 0 && (
+                <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+                                <tr>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        Position
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        <div className="flex items-center gap-1">
+                                            <Building2 className="w-4 h-4" aria-hidden="true" />
+                                            Company
+                                        </div>
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        <div className="flex items-center gap-1">
+                                            <MapPin className="w-4 h-4" aria-hidden="true" />
+                                            Location
+                                        </div>
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        Department
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        Technology Tags
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        Max Projects
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        <div className="flex items-center gap-1">
+                                            <Calendar className="w-4 h-4" aria-hidden="true" />
+                                            Deadline
+                                        </div>
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        <div className="flex items-center gap-1">
+                                            <FileText className="w-4 h-4" aria-hidden="true" />
+                                            CVs
+                                        </div>
+                                    </th>
+                                    <th scope="col" className="px-6 py-3 font-medium text-slate-500 dark:text-slate-400">
+                                        <div className="flex items-center gap-1">
+                                            <Clock className="w-4 h-4" aria-hidden="true" />
+                                            Updated
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                                {filteredPositions.map((position) => (
+                                    <tr
+                                        key={position.id}
+                                        className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                                    >
+                                        <td className="px-6 py-4">
+                                            <Link
+                                                to={`/public/positions/${position.id}`}
+                                                className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 focus:outline-none focus:underline"
+                                            >
+                                                {position.title}
+                                            </Link>
+                                            {renderDescriptionPreview(position.description)}
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                            {position.company || "—"}
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                            {position.location || "—"}
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                            {position.department || "—"}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {renderTagChips(position)}
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                            {safeMaxProjects(position.maxProjects)} Projects
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                            {formatDate(position.deadline)}
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                            {safeCvsCount(position)}
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-700 dark:text-slate-300">
+                                            {formatDate(position.updatedAt)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
