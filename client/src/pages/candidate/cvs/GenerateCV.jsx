@@ -15,37 +15,15 @@ import {
 } from "lucide-react";
 import api from "../../../api/axios";
 
-const isValidEmail = (value) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(value);
-};
-
-const normalizeOptionalValue = (value) => {
-    if (typeof value !== "string" || value.trim() === "") {
-        return null;
-    }
-    return value.trim();
-};
-
 const GenerateCV = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
     const [profile, setProfile] = useState(null);
     const [position, setPosition] = useState(null);
-    const [formData, setFormData] = useState({
-        fullName: "",
-        email: "",
-        phone: "",
-        summary: "",
-        skills: "",
-        education: "",
-        experience: "",
-    });
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
-    const [validationErrors, setValidationErrors] = useState({});
     const [retryCounter, setRetryCounter] = useState(0);
 
     useEffect(() => {
@@ -77,23 +55,6 @@ const GenerateCV = () => {
 
                 setProfile(profileData);
                 setPosition(positionData);
-
-                const fullName = [profileData.firstName, profileData.lastName]
-                    .filter(Boolean)
-                    .join(" ")
-                    .trim();
-
-                setFormData({
-                    fullName,
-                    email: profileData.email || "",
-                    phone: "",
-                    summary: "",
-                    skills: "",
-                    education: "",
-                    experience: "",
-                });
-
-                setValidationErrors({});
                 setError("");
             })
             .catch((requestError) => {
@@ -127,49 +88,8 @@ const GenerateCV = () => {
         setRetryCounter((previous) => previous + 1);
     };
 
-    const handleChange = (event) => {
-        const { name, value } = event.target;
-
-        setFormData((previous) => ({
-            ...previous,
-            [name]: value,
-        }));
-
-        if (validationErrors[name]) {
-            setValidationErrors((previous) => ({
-                ...previous,
-                [name]: "",
-            }));
-        }
-
-        if (error) {
-            setError("");
-        }
-    };
-
-    const validateForm = () => {
-        const errors = {};
-
-        if (typeof formData.fullName !== "string" || !formData.fullName.trim()) {
-            errors.fullName = "Full name is required.";
-        }
-
-        if (typeof formData.email !== "string" || !formData.email.trim()) {
-            errors.email = "Email is required.";
-        } else if (!isValidEmail(formData.email.trim())) {
-            errors.email = "Enter a valid email address.";
-        }
-
-        setValidationErrors(errors);
-        return Object.keys(errors).length === 0;
-    };
-
     const handleSubmit = async (event) => {
         event.preventDefault();
-
-        if (!validateForm()) {
-            return;
-        }
 
         if (!position || !profile) {
             setError("CV generation data is missing.");
@@ -187,14 +107,6 @@ const GenerateCV = () => {
 
             const payload = {
                 positionId: position.id,
-                fullName: formData.fullName.trim(),
-                email: formData.email.trim(),
-                phone: normalizeOptionalValue(formData.phone),
-                summary: normalizeOptionalValue(formData.summary),
-                skills: normalizeOptionalValue(formData.skills),
-                education: normalizeOptionalValue(formData.education),
-                experience: normalizeOptionalValue(formData.experience),
-                projects: null,
             };
 
             const response = await api.post("/cvs", payload);
@@ -354,6 +266,17 @@ const GenerateCV = () => {
 
     const isPositionActive = position.isActive === true;
 
+    const profileFullName = [
+        typeof profile.firstName === "string" ? profile.firstName.trim() : "",
+        typeof profile.lastName === "string" ? profile.lastName.trim() : "",
+    ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+    const profileEmail =
+        typeof profile.email === "string" ? profile.email.trim() : "";
+
     return (
         <div className="space-y-6">
             {/* Page Header */}
@@ -448,187 +371,66 @@ const GenerateCV = () => {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Full Name - read-only from Profile */}
-                        <div>
-                            <label
-                                htmlFor="fullName"
-                                className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                            >
-                                Full Name <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                id="fullName"
-                                name="fullName"
-                                type="text"
-                                value={formData.fullName}
-                                readOnly
-                                disabled={submitting || !isPositionActive}
-                                placeholder="e.g. John Doe"
-                                aria-invalid={Boolean(validationErrors.fullName)}
-                                aria-describedby={
-                                    validationErrors.fullName
-                                        ? "fullName-error"
-                                        : undefined
-                                }
-                                className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed read-only:bg-slate-50 dark:read-only:bg-slate-900/60 read-only:cursor-not-allowed"
-                            />
-                            <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
-                                Uses your current Profile name and cannot be changed for an individual CV.
-                            </p>
-                            {validationErrors.fullName && (
-                                <p
-                                    id="fullName-error"
-                                    className="mt-1.5 text-sm text-red-600 dark:text-red-400"
-                                >
-                                    {validationErrors.fullName}
+                    {/* Current Profile Section */}
+                    <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 p-4 border border-slate-200 dark:border-slate-700">
+                        <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                            Current Profile
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <span className="text-slate-500 dark:text-slate-400">Full Name</span>
+                                <p className="font-medium text-slate-900 dark:text-white mt-0.5">
+                                    {profileFullName || "Not provided"}
                                 </p>
-                            )}
-                        </div>
-
-                        {/* Email - read-only from Profile */}
-                        <div>
-                            <label
-                                htmlFor="email"
-                                className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                            >
-                                Email <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                id="email"
-                                name="email"
-                                type="email"
-                                value={formData.email}
-                                readOnly
-                                disabled={submitting || !isPositionActive}
-                                placeholder="e.g. john@example.com"
-                                aria-invalid={Boolean(validationErrors.email)}
-                                aria-describedby={
-                                    validationErrors.email
-                                        ? "email-error"
-                                        : undefined
-                                }
-                                className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed read-only:bg-slate-50 dark:read-only:bg-slate-900/60 read-only:cursor-not-allowed"
-                            />
-                            <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
-                                Uses your current account email and cannot be changed for an individual CV.
-                            </p>
-                            {validationErrors.email && (
-                                <p
-                                    id="email-error"
-                                    className="mt-1.5 text-sm text-red-600 dark:text-red-400"
-                                >
-                                    {validationErrors.email}
+                            </div>
+                            <div>
+                                <span className="text-slate-500 dark:text-slate-400">Email</span>
+                                <p className="font-medium text-slate-900 dark:text-white mt-0.5">
+                                    {profileEmail || "Not provided"}
                                 </p>
-                            )}
+                            </div>
+                            <div className="sm:col-span-2">
+                                <span className="text-slate-500 dark:text-slate-400">Location</span>
+                                <p className="font-medium text-slate-900 dark:text-white mt-0.5">
+                                    {profile.location || "Not provided"}
+                                </p>
+                            </div>
                         </div>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">
+                            Identity information is loaded from your current Profile and remains synchronized with it.
+                        </p>
                     </div>
 
-                    {/* Optional Fields */}
-                    <div>
-                        <label
-                            htmlFor="phone"
-                            className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                        >
-                            Phone
-                        </label>
-                        <input
-                            id="phone"
-                            name="phone"
-                            type="text"
-                            value={formData.phone}
-                            onChange={handleChange}
-                            disabled={submitting || !isPositionActive}
-                            placeholder="e.g. +880 1234567890"
-                            className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
+                    {/* Automatic Generation Section */}
+                    <div className="space-y-3">
+                        <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                            Automatic Generation
+                        </h3>
+                        <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                            <li className="flex items-start gap-2">
+                                <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" aria-hidden="true" />
+                                Position Attributes required by this Position will be added to your Profile automatically when missing.
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" aria-hidden="true" />
+                                Existing Profile Attribute values will be reused as the single master values across your CVs.
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" aria-hidden="true" />
+                                Matching Profile Projects will be selected automatically using the Position's Technology Tags and configured Project limit.
+                            </li>
+                        </ul>
                     </div>
 
-                    <div>
-                        <label
-                            htmlFor="summary"
-                            className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                        >
-                            Professional Summary
-                        </label>
-                        <textarea
-                            id="summary"
-                            name="summary"
-                            rows={4}
-                            value={formData.summary}
-                            onChange={handleChange}
-                            disabled={submitting || !isPositionActive}
-                            placeholder="Briefly describe your professional background and key strengths..."
-                            className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y"
-                        />
-                    </div>
-
-                    <div>
-                        <label
-                            htmlFor="skills"
-                            className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                        >
-                            Skills
-                        </label>
-                        <textarea
-                            id="skills"
-                            name="skills"
-                            rows={3}
-                            value={formData.skills}
-                            onChange={handleChange}
-                            disabled={submitting || !isPositionActive}
-                            placeholder="e.g. React, Node.js, PostgreSQL, Tailwind CSS"
-                            className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y"
-                        />
-                    </div>
-
-                    <div>
-                        <label
-                            htmlFor="education"
-                            className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                        >
-                            Education
-                        </label>
-                        <textarea
-                            id="education"
-                            name="education"
-                            rows={3}
-                            value={formData.education}
-                            onChange={handleChange}
-                            disabled={submitting || !isPositionActive}
-                            placeholder="e.g. B.Sc. in Computer Science, University of Dhaka, 2020-2024"
-                            className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y"
-                        />
-                    </div>
-
-                    <div>
-                        <label
-                            htmlFor="experience"
-                            className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                        >
-                            Work Experience
-                        </label>
-                        <textarea
-                            id="experience"
-                            name="experience"
-                            rows={4}
-                            value={formData.experience}
-                            onChange={handleChange}
-                            disabled={submitting || !isPositionActive}
-                            placeholder="e.g. Senior Frontend Developer, Google (2022-Present) ..."
-                            className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed resize-y"
-                        />
-                    </div>
-
-                    {/* Info Note about Projects */}
+                    {/* Draft Workflow Note */}
                     <div className="flex items-start gap-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3">
                         <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
                         <div>
                             <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                                Projects
+                                Draft workflow
                             </p>
                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
-                                Matching Profile Projects are selected automatically using the Position's Technology Tags and configured Project limit.
+                                The CV will be created as a Draft. Complete any highlighted missing Profile Attributes before publishing.
                             </p>
                         </div>
                     </div>

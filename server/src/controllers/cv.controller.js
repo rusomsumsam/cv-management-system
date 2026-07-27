@@ -462,28 +462,7 @@ const createCV = async (req, res) => {
 
     const body = getRequestBody(req);
 
-    const { fullName, email, positionId, phone, summary, skills, education, experience, projects } = body;
-
-    if (typeof fullName !== "string" || fullName.trim() === "") {
-        return res.status(400).json({
-            success: false,
-            message: "Full name is required.",
-        });
-    }
-
-    if (typeof email !== "string" || email.trim() === "") {
-        return res.status(400).json({
-            success: false,
-            message: "Email is required.",
-        });
-    }
-
-    if (!isValidEmail(email.trim())) {
-        return res.status(400).json({
-            success: false,
-            message: "Enter a valid email address.",
-        });
-    }
+    const { positionId } = body;
 
     if (typeof positionId !== "string" || positionId.trim() === "") {
         return res.status(400).json({
@@ -492,54 +471,7 @@ const createCV = async (req, res) => {
         });
     }
 
-    const normalizedFullName = fullName.trim();
-    const normalizedEmail = email.trim();
     const normalizedPositionId = positionId.trim();
-
-    // Validate optional fields explicitly
-    if (!isValidOptionalStringInput(phone)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid phone format.",
-        });
-    }
-    if (!isValidOptionalStringInput(summary)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid summary format.",
-        });
-    }
-    if (!isValidOptionalStringInput(skills)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid skills format.",
-        });
-    }
-    if (!isValidOptionalStringInput(education)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid education format.",
-        });
-    }
-    if (!isValidOptionalStringInput(experience)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid experience format.",
-        });
-    }
-    if (!isValidOptionalStringInput(projects)) {
-        return res.status(400).json({
-            success: false,
-            message: "Invalid projects format.",
-        });
-    }
-
-    const normalizedPhone = normalizeOptionalString(phone);
-    const normalizedSummary = normalizeOptionalString(summary);
-    const normalizedSkills = normalizeOptionalString(skills);
-    const normalizedEducation = normalizeOptionalString(education);
-    const normalizedExperience = normalizeOptionalString(experience);
-    const normalizedProjects = normalizeOptionalString(projects);
 
     try {
         const newCV = await prisma.$transaction(async (tx) => {
@@ -640,17 +572,64 @@ const createCV = async (req, res) => {
                 });
             }
 
-            // 5. Create the Draft CV
+            // 5. Load authoritative Candidate Profile
+            const candidateProfile = await tx.user.findUnique({
+                where: {
+                    id: req.user.id,
+                },
+                select: {
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                },
+            });
+
+            if (!candidateProfile) {
+                throw new CVRequestError(404, "Candidate profile not found.");
+            }
+
+            const profileFullName = [
+                typeof candidateProfile.firstName === "string"
+                    ? candidateProfile.firstName.trim()
+                    : "",
+                typeof candidateProfile.lastName === "string"
+                    ? candidateProfile.lastName.trim()
+                    : "",
+            ]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+
+            const profileEmail =
+                typeof candidateProfile.email === "string"
+                    ? candidateProfile.email.trim().toLowerCase()
+                    : "";
+
+            if (!profileFullName) {
+                throw new CVRequestError(
+                    409,
+                    "Complete your Profile name before creating a CV."
+                );
+            }
+
+            if (!profileEmail || !isValidEmail(profileEmail)) {
+                throw new CVRequestError(
+                    409,
+                    "Complete a valid Profile email before creating a CV."
+                );
+            }
+
+            // 6. Create the Draft CV
             const createdCV = await tx.cV.create({
                 data: {
-                    fullName: normalizedFullName,
-                    email: normalizedEmail,
-                    phone: normalizedPhone,
-                    summary: normalizedSummary,
-                    skills: normalizedSkills,
-                    education: normalizedEducation,
-                    experience: normalizedExperience,
-                    projects: normalizedProjects,
+                    fullName: profileFullName,
+                    email: profileEmail,
+                    phone: null,
+                    summary: null,
+                    skills: null,
+                    education: null,
+                    experience: null,
+                    projects: null,
                     userId: req.user.id,
                     positionId: normalizedPositionId,
                     status: "DRAFT",
