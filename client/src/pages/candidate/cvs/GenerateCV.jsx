@@ -1,3 +1,4 @@
+// client/src/pages/candidate/cvs/GenerateCV.jsx
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -448,7 +449,7 @@ const GenerateCV = () => {
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Full Name */}
+                        {/* Full Name - read-only from Profile */}
                         <div>
                             <label
                                 htmlFor="fullName"
@@ -461,7 +462,7 @@ const GenerateCV = () => {
                                 name="fullName"
                                 type="text"
                                 value={formData.fullName}
-                                onChange={handleChange}
+                                readOnly
                                 disabled={submitting || !isPositionActive}
                                 placeholder="e.g. John Doe"
                                 aria-invalid={Boolean(validationErrors.fullName)}
@@ -470,10 +471,10 @@ const GenerateCV = () => {
                                         ? "fullName-error"
                                         : undefined
                                 }
-                                className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed read-only:bg-slate-50 dark:read-only:bg-slate-900/60 read-only:cursor-not-allowed"
                             />
                             <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
-                                Pre-filled from your Profile.
+                                Uses your current Profile name and cannot be changed for an individual CV.
                             </p>
                             {validationErrors.fullName && (
                                 <p
@@ -485,7 +486,7 @@ const GenerateCV = () => {
                             )}
                         </div>
 
-                        {/* Email */}
+                        {/* Email - read-only from Profile */}
                         <div>
                             <label
                                 htmlFor="email"
@@ -498,7 +499,7 @@ const GenerateCV = () => {
                                 name="email"
                                 type="email"
                                 value={formData.email}
-                                onChange={handleChange}
+                                readOnly
                                 disabled={submitting || !isPositionActive}
                                 placeholder="e.g. john@example.com"
                                 aria-invalid={Boolean(validationErrors.email)}
@@ -507,10 +508,10 @@ const GenerateCV = () => {
                                         ? "email-error"
                                         : undefined
                                 }
-                                className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-600 dark:focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-600 dark:focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed read-only:bg-slate-50 dark:read-only:bg-slate-900/60 read-only:cursor-not-allowed"
                             />
                             <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
-                                Pre-filled from your Profile.
+                                Uses your current account email and cannot be changed for an individual CV.
                             </p>
                             {validationErrors.email && (
                                 <p
@@ -627,7 +628,7 @@ const GenerateCV = () => {
                                 Projects
                             </p>
                             <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
-                                Your Profile Projects will be included dynamically. Project filtering will be added after the Position Project Tag schema migration.
+                                Matching Profile Projects are selected automatically using the Position's Technology Tags and configured Project limit.
                             </p>
                         </div>
                     </div>
