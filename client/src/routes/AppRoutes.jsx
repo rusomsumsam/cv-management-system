@@ -64,6 +64,7 @@ import EditProfile from "../pages/candidate/profile/EditProfile";
 import PositionAccessRules from "../pages/recruiter/positions/PositionAccessRules";
 import PublicPositions from "../pages/public/PublicPositions";
 import PublicPositionDetails from "../pages/public/PublicPositionDetails";
+import AdminUsers from "../pages/admin/users/AdminUsers";
 
 const AppRoutes = () => {
     return (
@@ -102,6 +103,16 @@ const AppRoutes = () => {
                 <Route
                     path="/search"
                     element={<SearchResults />}
+                />
+
+                {/* Admin - Users */}
+                <Route
+                    path="/admin/users"
+                    element={
+                        <ProtectedRoute allowedRoles={["ADMIN"]}>
+                            <AdminUsers />
+                        </ProtectedRoute>
+                    }
                 />
 
                 {/* Recruiter Profile */}

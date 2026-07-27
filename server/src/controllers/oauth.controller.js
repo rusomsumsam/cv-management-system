@@ -108,6 +108,7 @@ const safeRedirect = (res, errorCode = null) => {
             "oauth_email_unverified",
             "oauth_account_conflict",
             "oauth_login_failed",
+            "oauth_account_blocked",
         ];
         const safeCode = allowedCodes.includes(errorCode) ? errorCode : "oauth_login_failed";
         const url = new URL("/login", `${clientUrl}/`);
@@ -253,14 +254,18 @@ const findOrCreateOAuthUser = async ({ provider, providerAccountId, email, first
                             email: true,
                             role: true,
                             profilePhoto: true,
+                            isBlocked: true,
                         },
                     },
                 },
             });
 
             if (existingAccount) {
-                // Return existing user without updating first/last name
                 const user = existingAccount.user;
+                if (user.isBlocked === true) {
+                    throw new Error("oauth_account_blocked");
+                }
+                // Return existing user without updating first/last name
                 // Update profilePhoto only if null and we have a valid one
                 if (!user.profilePhoto && normalizedPhoto) {
                     await tx.user.update({
@@ -289,6 +294,7 @@ const findOrCreateOAuthUser = async ({ provider, providerAccountId, email, first
                     email: true,
                     role: true,
                     profilePhoto: true,
+                    isBlocked: true,
                     oauthAccounts: {
                         select: {
                             provider: true,
@@ -299,6 +305,9 @@ const findOrCreateOAuthUser = async ({ provider, providerAccountId, email, first
             });
 
             if (existingUser) {
+                if (existingUser.isBlocked === true) {
+                    throw new Error("oauth_account_blocked");
+                }
                 // Check if this user already has this provider linked to a different account
                 const existingProviderAccount = existingUser.oauthAccounts.find(
                     (acc) => acc.provider === provider
@@ -343,6 +352,7 @@ const findOrCreateOAuthUser = async ({ provider, providerAccountId, email, first
                     email: normalizedEmail,
                     password: null,
                     role: "CANDIDATE",
+                    isBlocked: false,
                     profilePhoto: normalizedPhoto,
                     oauthAccounts: {
                         create: {
@@ -358,6 +368,7 @@ const findOrCreateOAuthUser = async ({ provider, providerAccountId, email, first
                     email: true,
                     role: true,
                     profilePhoto: true,
+                    isBlocked: true,
                 },
             });
 
@@ -366,8 +377,9 @@ const findOrCreateOAuthUser = async ({ provider, providerAccountId, email, first
     } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
             // Unique constraint violation - retry once by fetching the account
+            let retryAccount;
             try {
-                const retryAccount = await prisma.oAuthAccount.findUnique({
+                retryAccount = await prisma.oAuthAccount.findUnique({
                     where: {
                         provider_providerAccountId: {
                             provider,
@@ -383,32 +395,40 @@ const findOrCreateOAuthUser = async ({ provider, providerAccountId, email, first
                                 email: true,
                                 role: true,
                                 profilePhoto: true,
+                                isBlocked: true,
                             },
                         },
                     },
                 });
-                if (retryAccount) {
-                    const user = retryAccount.user;
-                    if (!user.profilePhoto && normalizedPhoto) {
-                        await prisma.user.update({
-                            where: { id: user.id },
-                            data: { profilePhoto: normalizedPhoto },
-                        });
-                        user.profilePhoto = normalizedPhoto;
-                    }
-                    return {
-                        id: user.id,
-                        firstName: user.firstName,
-                        lastName: user.lastName,
-                        email: user.email,
-                        role: user.role,
-                        profilePhoto: user.profilePhoto,
-                    };
-                }
             } catch {
-                // Fall through to error
+                throw new Error("oauth_account_conflict");
             }
-            throw new Error("oauth_account_conflict");
+
+            if (!retryAccount) {
+                throw new Error("oauth_account_conflict");
+            }
+
+            const user = retryAccount.user;
+            if (user.isBlocked === true) {
+                throw new Error("oauth_account_blocked");
+            }
+
+            if (!user.profilePhoto && normalizedPhoto) {
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: { profilePhoto: normalizedPhoto },
+                });
+                user.profilePhoto = normalizedPhoto;
+            }
+
+            return {
+                id: user.id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email,
+                role: user.role,
+                profilePhoto: user.profilePhoto,
+            };
         }
         throw error;
     }
@@ -532,6 +552,9 @@ const handleGoogleCallback = async (req, res) => {
         } catch (error) {
             if (error.message === "oauth_account_conflict") {
                 return safeRedirect(res, "oauth_account_conflict");
+            }
+            if (error.message === "oauth_account_blocked") {
+                return safeRedirect(res, "oauth_account_blocked");
             }
             throw error;
         }
@@ -713,6 +736,9 @@ const handleGitHubCallback = async (req, res) => {
         } catch (error) {
             if (error.message === "oauth_account_conflict") {
                 return safeRedirect(res, "oauth_account_conflict");
+            }
+            if (error.message === "oauth_account_blocked") {
+                return safeRedirect(res, "oauth_account_blocked");
             }
             throw error;
         }

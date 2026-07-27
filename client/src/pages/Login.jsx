@@ -12,6 +12,7 @@ const OAUTH_ERROR_MESSAGES = {
     oauth_email_unavailable: 'A verified email address is required to sign in.',
     oauth_email_unverified: 'Your provider email address must be verified before signing in.',
     oauth_account_conflict: 'This social account cannot be linked to the existing account.',
+    oauth_account_blocked: 'This account has been blocked. Please contact an administrator.',
     oauth_login_failed: 'Social sign-in failed. Please try again.',
 };
 

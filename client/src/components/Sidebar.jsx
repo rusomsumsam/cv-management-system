@@ -8,6 +8,7 @@ import {
     FileText,
     MessageSquare,
     X,
+    Users,
 } from "lucide-react";
 
 const Sidebar = ({
@@ -143,6 +144,12 @@ const Sidebar = ({
                 label: "Dashboard",
                 path: "/dashboard",
                 icon: LayoutDashboard,
+                end: true,
+            },
+            {
+                label: "Users",
+                path: "/admin/users",
+                icon: Users,
                 end: true,
             },
             {

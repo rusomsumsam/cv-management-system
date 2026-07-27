@@ -176,6 +176,7 @@ const registerUser = async (req, res) => {
                     email: normalizedEmail,
                     password: hashedPassword,
                     role: "CANDIDATE",
+                    isBlocked: false,
                 },
                 select: {
                     id: true,
@@ -245,8 +246,16 @@ const loginUser = async (req, res) => {
             });
         }
 
+        // Check if user is blocked
+        if (user.isBlocked === true) {
+            return res.status(403).json({
+                success: false,
+                message: "This account has been blocked. Please contact an administrator.",
+            });
+        }
+
         // Handle OAuth-only users (null password)
-        if (!user || typeof user.password !== "string" || !user.password) {
+        if (typeof user.password !== "string" || !user.password) {
             return res.status(401).json({
                 success: false,
                 message: "Invalid email or password.",
@@ -301,6 +310,7 @@ const getCurrentUser = async (req, res) => {
                 profilePhoto: true,
                 location: true,
                 role: true,
+                isBlocked: true,
                 createdAt: true,
                 updatedAt: true,
             },
@@ -314,6 +324,14 @@ const getCurrentUser = async (req, res) => {
             });
         }
 
+        if (user.isBlocked === true) {
+            res.clearCookie("token", getCookieOptions());
+            return res.status(403).json({
+                success: false,
+                message: "This account has been blocked. Please contact an administrator.",
+            });
+        }
+
         return res.status(200).json({
             success: true,
             data: {
@@ -324,6 +342,7 @@ const getCurrentUser = async (req, res) => {
                 profilePhoto: user.profilePhoto,
                 location: user.location,
                 role: user.role,
+                isBlocked: user.isBlocked,
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt,
             },
