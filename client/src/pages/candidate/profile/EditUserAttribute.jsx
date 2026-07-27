@@ -1,5 +1,6 @@
+// client/src/pages/candidate/profile/EditUserAttribute.jsx
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
     ArrowLeft,
     Save,
@@ -28,9 +29,25 @@ const formatAttributeType = (type) => {
         .replace(/\b\w/g, (character) => character.toUpperCase());
 };
 
+const getSafeInternalReturnPath = (value, fallbackPath) => {
+    if (
+        typeof value !== "string" ||
+        !value.startsWith("/") ||
+        value.startsWith("//") ||
+        value.includes("\\") ||
+        value.includes("\r") ||
+        value.includes("\n")
+    ) {
+        return fallbackPath;
+    }
+
+    return value;
+};
+
 const EditUserAttribute = () => {
     const navigate = useNavigate();
     const { id } = useParams();
+    const [searchParams] = useSearchParams();
 
     const [userAttribute, setUserAttribute] = useState(null);
     const [value, setValue] = useState("");
@@ -40,6 +57,10 @@ const EditUserAttribute = () => {
     const [validationError, setValidationError] = useState("");
     const [retryCounter, setRetryCounter] = useState(0);
     const [imagePreviewError, setImagePreviewError] = useState(false);
+
+    const returnTo = searchParams.get("returnTo");
+    const fallbackPath = `/profile/attributes/${id}`;
+    const safeReturnPath = getSafeInternalReturnPath(returnTo, fallbackPath);
 
     useEffect(() => {
         let cancelled = false;
@@ -191,7 +212,7 @@ const EditUserAttribute = () => {
                 value: normalizedPayloadValue,
             });
 
-            navigate(`/profile/attributes/${id}`);
+            navigate(safeReturnPath);
         } catch (requestError) {
             setError(
                 requestError.response?.data?.message ||
@@ -303,7 +324,7 @@ const EditUserAttribute = () => {
             {/* Page Header */}
             <div className="flex items-center gap-4">
                 <Link
-                    to={`/profile/attributes/${id}`}
+                    to={safeReturnPath}
                     className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded dark:focus:ring-offset-slate-900"
                 >
                     <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -555,7 +576,7 @@ const EditUserAttribute = () => {
                     <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
                         <button
                             type="button"
-                            onClick={() => navigate(`/profile/attributes/${id}`)}
+                            onClick={() => navigate(safeReturnPath)}
                             disabled={submitting}
                             className="flex-1 px-6 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >

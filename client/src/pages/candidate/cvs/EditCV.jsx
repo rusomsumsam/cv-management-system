@@ -359,7 +359,7 @@ const EditCV = () => {
                                         <td className="py-3 px-4">
                                             {attribute.userAttributeId ? (
                                                 <Link
-                                                    to={`/profile/attributes/edit/${attribute.userAttributeId}`}
+                                                    to={`/profile/attributes/edit/${attribute.userAttributeId}?returnTo=${encodeURIComponent(`/cvs/edit/${id}`)}`}
                                                     className="inline-flex items-center text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium transition-colors focus:outline-none focus:underline"
                                                 >
                                                     Edit Profile Value
