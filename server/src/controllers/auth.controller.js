@@ -245,6 +245,14 @@ const loginUser = async (req, res) => {
             });
         }
 
+        // Handle OAuth-only users (null password)
+        if (!user || typeof user.password !== "string" || !user.password) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid email or password.",
+            });
+        }
+
         const isPasswordValid = await bcrypt.compare(validatedPassword, user.password);
         if (!isPasswordValid) {
             return res.status(401).json({

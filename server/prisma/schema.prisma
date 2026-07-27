@@ -13,12 +13,17 @@ enum Role {
   ADMIN
 }
 
+enum OAuthProvider {
+  GOOGLE
+  GITHUB
+}
+
 model User {
   id           String  @id @default(cuid())
   firstName    String
   lastName     String
   email        String  @unique
-  password     String
+  password     String?
   profilePhoto String?
   location     String?
   role         Role    @default(CANDIDATE)
@@ -29,9 +34,26 @@ model User {
   cvs            CV[]
   discussions    Discussion[]
   likes          Like[]
+  oauthAccounts  OAuthAccount[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model OAuthAccount {
+  id                String        @id @default(cuid())
+  provider          OAuthProvider
+  providerAccountId String
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+  @@index([userId])
 }
 
 model Project {

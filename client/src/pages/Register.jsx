@@ -4,6 +4,24 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import useAuth from '../hooks/useAuth';
 
+const getOAuthUrl = (provider) => {
+    const apiBaseUrl = import.meta.env.VITE_API_URL;
+    if (typeof apiBaseUrl !== 'string' || !apiBaseUrl.trim()) {
+        throw new Error('Authentication service is not configured.');
+    }
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(apiBaseUrl.trim());
+    } catch {
+        throw new Error('Authentication service is not configured.');
+    }
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        throw new Error('Authentication service is not configured.');
+    }
+    const normalizedBase = parsedUrl.toString().replace(/\/+$/, '');
+    return `${normalizedBase}/auth/${provider}`;
+};
+
 const Register = () => {
     const navigate = useNavigate();
     const { refreshAuth } = useAuth();
@@ -21,9 +39,13 @@ const Register = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [acceptTerms, setAcceptTerms] = useState(false);
+    const [socialLoading, setSocialLoading] = useState('');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (loading || socialLoading) {
+            return;
+        }
         setError('');
 
         // Normalize inputs
@@ -104,6 +126,28 @@ const Register = () => {
         }
     };
 
+    const handleSocialLogin = (provider) => {
+        if (loading || socialLoading) {
+            return;
+        }
+        if (provider !== 'google' && provider !== 'github') {
+            setError('Unsupported authentication provider.');
+            return;
+        }
+        try {
+            setError('');
+            setSocialLoading(provider);
+            const oauthUrl = getOAuthUrl(provider);
+            window.location.assign(oauthUrl);
+        } catch (oauthError) {
+            setSocialLoading('');
+            setError(
+                oauthError.message ||
+                'Social authentication is temporarily unavailable.'
+            );
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
             {/* Desktop: Two-column layout */}
@@ -114,7 +158,14 @@ const Register = () => {
                     {/* Logo */}
                     <div className="flex items-center gap-2 mb-8">
                         <div className="bg-blue-600 text-white rounded p-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={2.5}
+                                stroke="currentColor"
+                                className="w-5 h-5"
+                            >
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5M10.5 21v-7.5M3 13.5h18M4.5 13.5V6a2.25 2.25 0 012.25-2.25h10.5A2.25 2.25 0 0119.5 6v7.5" />
                             </svg>
                         </div>
@@ -136,7 +187,14 @@ const Register = () => {
                             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 bg-slate-50/50 dark:bg-slate-800/50">
                                 <div className="flex items-start gap-2">
                                     <div className="text-slate-600 dark:text-slate-400 mt-0.5">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            strokeWidth={1.5}
+                                            stroke="currentColor"
+                                            className="w-4 h-4"
+                                        >
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                                         </svg>
                                     </div>
@@ -149,7 +207,14 @@ const Register = () => {
                             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 bg-slate-50/50 dark:bg-slate-800/50">
                                 <div className="flex items-start gap-2">
                                     <div className="text-slate-600 dark:text-slate-400 mt-0.5">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            strokeWidth={1.5}
+                                            stroke="currentColor"
+                                            className="w-4 h-4"
+                                        >
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                                         </svg>
                                     </div>
@@ -162,7 +227,14 @@ const Register = () => {
                             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 bg-slate-50/50 dark:bg-slate-800/50">
                                 <div className="flex items-start gap-2">
                                     <div className="text-slate-600 dark:text-slate-400 mt-0.5">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            strokeWidth={1.5}
+                                            stroke="currentColor"
+                                            className="w-4 h-4"
+                                        >
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225.012.449.037.669m29.5 0a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225.012.449.037.669m-1.8 0a9.094 9.094 0 01-3.741-.479 3 3 0 004.682-2.72m-1.78 3.198l.001.031c0 .225-.012.449-.037.669m-4.68-2.72A3 3 0 0015 17.25v6a3 3 0 003 3h6a3 3 0 003-3v-6a3 3 0 00-3-3h-6z" />
                                         </svg>
                                     </div>
@@ -175,7 +247,14 @@ const Register = () => {
                             <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 bg-slate-50/50 dark:bg-slate-800/50">
                                 <div className="flex items-start gap-2">
                                     <div className="text-slate-600 dark:text-slate-400 mt-0.5">
-                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            strokeWidth={1.5}
+                                            stroke="currentColor"
+                                            className="w-4 h-4"
+                                        >
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                                         </svg>
                                     </div>
@@ -226,6 +305,9 @@ const Register = () => {
                         <p className="text-slate-400 dark:text-slate-500 text-center text-sm mt-2">
                             Public registration creates a Candidate account.
                         </p>
+                        <p className="text-slate-400 dark:text-slate-500 text-center text-sm mt-1">
+                            Social registration also creates a Candidate account.
+                        </p>
                     </div>
 
                     {error && (
@@ -248,7 +330,7 @@ const Register = () => {
                                     onChange={(e) => setFirstName(e.target.value)}
                                     className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                     placeholder="First Name"
-                                    disabled={loading}
+                                    disabled={loading || Boolean(socialLoading)}
                                     required
                                     maxLength={50}
                                     autoComplete="given-name"
@@ -265,7 +347,7 @@ const Register = () => {
                                     onChange={(e) => setLastName(e.target.value)}
                                     className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                     placeholder="Last Name"
-                                    disabled={loading}
+                                    disabled={loading || Boolean(socialLoading)}
                                     required
                                     maxLength={50}
                                     autoComplete="family-name"
@@ -285,7 +367,7 @@ const Register = () => {
                                 onChange={(e) => setEmail(e.target.value)}
                                 className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                 placeholder="Email"
-                                disabled={loading}
+                                disabled={loading || Boolean(socialLoading)}
                                 required
                                 maxLength={254}
                                 autoComplete="email"
@@ -306,7 +388,7 @@ const Register = () => {
                                         onChange={(e) => setPassword(e.target.value)}
                                         className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 pr-10"
                                         placeholder="Password"
-                                        disabled={loading}
+                                        disabled={loading || Boolean(socialLoading)}
                                         required
                                         minLength={8}
                                         maxLength={72}
@@ -316,16 +398,30 @@ const Register = () => {
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-                                        disabled={loading}
+                                        disabled={loading || Boolean(socialLoading)}
                                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                                         title={showPassword ? 'Hide password' : 'Show password'}
                                     >
                                         {showPassword ? (
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                strokeWidth={1.5}
+                                                stroke="currentColor"
+                                                className="w-4 h-4"
+                                            >
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
                                             </svg>
                                         ) : (
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                strokeWidth={1.5}
+                                                stroke="currentColor"
+                                                className="w-4 h-4"
+                                            >
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                             </svg>
@@ -345,7 +441,7 @@ const Register = () => {
                                         onChange={(e) => setConfirmPassword(e.target.value)}
                                         className="w-full px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 pr-10"
                                         placeholder="Confirm"
-                                        disabled={loading}
+                                        disabled={loading || Boolean(socialLoading)}
                                         required
                                         minLength={8}
                                         maxLength={72}
@@ -355,16 +451,30 @@ const Register = () => {
                                         type="button"
                                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-                                        disabled={loading}
+                                        disabled={loading || Boolean(socialLoading)}
                                         aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
                                         title={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
                                     >
                                         {showConfirmPassword ? (
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                strokeWidth={1.5}
+                                                stroke="currentColor"
+                                                className="w-4 h-4"
+                                            >
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
                                             </svg>
                                         ) : (
-                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                strokeWidth={1.5}
+                                                stroke="currentColor"
+                                                className="w-4 h-4"
+                                            >
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                             </svg>
@@ -382,7 +492,7 @@ const Register = () => {
                                 checked={acceptTerms}
                                 onChange={(e) => setAcceptTerms(e.target.checked)}
                                 className="mt-1 w-4 h-4 text-blue-600 border-slate-300 dark:border-slate-600 rounded focus:ring-blue-500 dark:bg-slate-800"
-                                disabled={loading}
+                                disabled={loading || Boolean(socialLoading)}
                                 required
                             />
                             <label htmlFor="terms" className="text-sm text-slate-600 dark:text-slate-400">
@@ -393,12 +503,17 @@ const Register = () => {
                         {/* Create Account Button */}
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || Boolean(socialLoading)}
                             className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {loading ? (
                                 <span className="flex items-center justify-center gap-2">
-                                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        className="animate-spin h-5 w-5 text-white"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                    >
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
@@ -408,6 +523,62 @@ const Register = () => {
                                 'Create Account'
                             )}
                         </button>
+
+                        {/* Divider */}
+                        <div className="relative flex items-center my-1">
+                            <div className="flex-grow border-t border-slate-200 dark:border-slate-600"></div>
+                            <span className="flex-shrink-0 mx-4 text-[13px] text-[#94a3b8] dark:text-slate-500 font-medium">or continue with</span>
+                            <div className="flex-grow border-t border-slate-200 dark:border-slate-600"></div>
+                        </div>
+
+                        {/* Social Buttons */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Google Button */}
+                            <button
+                                type="button"
+                                onClick={() => handleSocialLogin('google')}
+                                disabled={loading || Boolean(socialLoading)}
+                                aria-label="Continue with Google"
+                                title="Continue with Google"
+                                aria-busy={socialLoading === 'google'}
+                                className="w-full py-2.5 px-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-100 font-medium text-[15px] hover:bg-slate-50 dark:hover:bg-slate-700 transition duration-200 flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 48 48"
+                                    className="w-5 h-5"
+                                    aria-hidden="true"
+                                >
+                                    <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z" />
+                                    <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z" />
+                                    <path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z" />
+                                    <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z" />
+                                </svg>
+                                {socialLoading === 'google' ? 'Connecting to Google...' : 'Continue with Google'}
+                            </button>
+
+                            {/* GitHub Button */}
+                            <button
+                                type="button"
+                                onClick={() => handleSocialLogin('github')}
+                                disabled={loading || Boolean(socialLoading)}
+                                aria-label="Continue with GitHub"
+                                title="Continue with GitHub"
+                                aria-busy={socialLoading === 'github'}
+                                className="w-full py-2.5 px-4 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-medium text-[15px] hover:bg-slate-800 dark:hover:bg-white transition duration-200 rounded-lg flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    className="w-5 h-5"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.009-.868-.014-1.703-2.782.605-3.369-1.343-3.369-1.343-.455-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.071 1.531 1.031 1.531 1.031.892 1.529 2.341 1.087 2.91.831.091-.647.349-1.087.635-1.337-2.221-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.295 2.748-1.026 2.748-1.026.546 1.377.203 2.394.1 2.647.64.7 1.028 1.595 1.028 2.688 0 3.848-2.337 4.695-4.566 4.943.359.31.678.921.678 1.856 0 1.34-.012 2.421-.012 2.75 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.523 2 12 2Z" />
+                                </svg>
+                                {socialLoading === 'github' ? 'Connecting to GitHub...' : 'Continue with GitHub'}
+                            </button>
+                        </div>
 
                         {/* Footer */}
                         <div className="text-center mt-4">
