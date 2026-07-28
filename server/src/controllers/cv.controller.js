@@ -567,6 +567,7 @@ const createCV = async (req, res) => {
                         userId: req.user.id,
                         attributeId,
                         value: null,
+                        version: 1,
                     })),
                     skipDuplicates: true,
                 });
@@ -990,6 +991,7 @@ const getCVById = async (req, res) => {
                         id: true,
                         attributeId: true,
                         value: true,
+                        version: true,
                         updatedAt: true,
                     },
                 });
@@ -1017,6 +1019,7 @@ const getCVById = async (req, res) => {
                         category: positionAttribute.attribute.category,
                         type: positionAttribute.attribute.type,
                         userAttributeId: userAttribute?.id || null,
+                        userAttributeVersion: userAttribute?.version ?? null,
                         value,
                         isMissing: isMissingValue(value),
                     };
@@ -1125,6 +1128,7 @@ const getCVById = async (req, res) => {
                         id: true,
                         attributeId: true,
                         value: true,
+                        version: true,
                         updatedAt: true,
                     },
                 });
@@ -1152,6 +1156,7 @@ const getCVById = async (req, res) => {
                         category: positionAttribute.attribute.category,
                         type: positionAttribute.attribute.type,
                         userAttributeId: userAttribute?.id || null,
+                        userAttributeVersion: userAttribute?.version ?? null,
                         value,
                         isMissing: isMissingValue(value),
                     };
@@ -1214,6 +1219,7 @@ const getCVById = async (req, res) => {
                     id: true,
                     attributeId: true,
                     value: true,
+                    version: true,
                     updatedAt: true,
                 },
             });
@@ -1241,6 +1247,7 @@ const getCVById = async (req, res) => {
                     category: positionAttribute.attribute.category,
                     type: positionAttribute.attribute.type,
                     userAttributeId: userAttribute?.id || null,
+                    userAttributeVersion: userAttribute?.version ?? null,
                     value,
                     isMissing: isMissingValue(value),
                 };

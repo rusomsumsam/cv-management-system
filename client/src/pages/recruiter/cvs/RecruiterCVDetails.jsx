@@ -4,9 +4,6 @@ import { Link, useParams } from "react-router-dom";
 import {
     ArrowLeft,
     FileText,
-    BriefcaseBusiness,
-    GraduationCap,
-    Code,
     FolderKanban,
     CheckCircle2,
     Clock,
@@ -482,17 +479,6 @@ const RecruiterCVDetails = () => {
     const likesCount = cv._count?.likes ?? 0;
     const likedByCurrentUser = cv.likedByCurrentUser === true;
 
-    const skills = cv.skills
-        ? [
-            ...new Set(
-                cv.skills
-                    .split(",")
-                    .map((skill) => skill.trim())
-                    .filter(Boolean)
-            ),
-        ]
-        : [];
-
     const getStatusIcon = (status) => {
         if (status === "PUBLISHED") {
             return <CheckCircle2 className="h-4 w-4" aria-hidden="true" />;
@@ -520,8 +506,8 @@ const RecruiterCVDetails = () => {
                     <div className="flex flex-wrap items-center gap-3">
                         <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${cv.status === "PUBLISHED"
-                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                    : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                                 }`}
                         >
                             {getStatusIcon(cv.status)}
@@ -595,10 +581,6 @@ const RecruiterCVDetails = () => {
                         <span className="text-slate-900 dark:text-white">{emailDisplay}</span>
                     </div>
                     <div>
-                        <span className="text-slate-500 dark:text-slate-400 block">Phone</span>
-                        <span className="text-slate-900 dark:text-white">{cv.phone || "Not provided"}</span>
-                    </div>
-                    <div>
                         <span className="text-slate-500 dark:text-slate-400 block">Location</span>
                         <span className="text-slate-900 dark:text-white">{locationDisplay}</span>
                     </div>
@@ -641,70 +623,6 @@ const RecruiterCVDetails = () => {
                 </div>
             </div>
 
-            {/* Professional Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
-                    <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 dark:border-slate-800 pb-2">
-                        <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                            Professional Summary
-                        </h2>
-                    </div>
-                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
-                        {cv.summary || "No summary provided."}
-                    </p>
-                </div>
-
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
-                    <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 dark:border-slate-800 pb-2">
-                        <Code className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                            Skills
-                        </h2>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        {skills.length > 0 ? (
-                            skills.map((skill) => (
-                                <span
-                                    key={skill}
-                                    className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-medium"
-                                >
-                                    {skill}
-                                </span>
-                            ))
-                        ) : (
-                            <p className="text-slate-600 dark:text-slate-400">No skills provided.</p>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
-                    <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 dark:border-slate-800 pb-2">
-                        <GraduationCap className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                            Education
-                        </h2>
-                    </div>
-                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
-                        {cv.education || "No education provided."}
-                    </p>
-                </div>
-
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
-                    <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 dark:border-slate-800 pb-2">
-                        <BriefcaseBusiness className="h-5 w-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                            Experience
-                        </h2>
-                    </div>
-                    <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
-                        {cv.experience || "No experience provided."}
-                    </p>
-                </div>
-            </div>
-
             {/* Profile Projects Section */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
                 <div className="flex items-center gap-2 mb-4 border-b-2 border-slate-100 dark:border-slate-800 pb-2">
@@ -736,8 +654,8 @@ const RecruiterCVDetails = () => {
                                         </div>
                                         <span
                                             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium shrink-0 ${project.isOngoing
-                                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                                    : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                                : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
                                                 }`}
                                         >
                                             {project.isOngoing ? "Ongoing" : "Completed"}
@@ -875,8 +793,8 @@ const RecruiterCVDetails = () => {
                                         <tr
                                             key={attribute.positionAttributeId}
                                             className={`${isMissing
-                                                    ? "bg-red-50 dark:bg-red-900/10"
-                                                    : "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                                                ? "bg-red-50 dark:bg-red-900/10"
+                                                : "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                                                 }`}
                                         >
                                             <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
@@ -974,8 +892,8 @@ const RecruiterCVDetails = () => {
                         onClick={handleLikeToggle}
                         disabled={liking}
                         className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${likedByCurrentUser
-                                ? "bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 focus:ring-red-500 dark:focus:ring-offset-slate-900"
-                                : "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 focus:ring-blue-500 dark:focus:ring-offset-slate-900"
+                            ? "bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 focus:ring-red-500 dark:focus:ring-offset-slate-900"
+                            : "bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 focus:ring-blue-500 dark:focus:ring-offset-slate-900"
                             }`}
                     >
                         {liking ? (

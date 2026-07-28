@@ -433,11 +433,6 @@ const RecruiterGeneratedCVView = () => {
     const likesCount = cv._count?.likes ?? 0;
     const hasProfilePhoto = Boolean(cv.user?.profilePhoto) && !imageError;
 
-    const skills =
-        typeof cv.skills === "string"
-            ? [...new Set(cv.skills.split(",").map((s) => s.trim()).filter(Boolean))]
-            : [];
-
     return (
         <div className="space-y-6">
             {/* Page Header */}
@@ -520,70 +515,11 @@ const RecruiterGeneratedCVView = () => {
                                     <p className="text-slate-900 dark:text-white">{cv.email || cv.user?.email || "Not provided"}</p>
                                 </div>
                                 <div>
-                                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Phone</span>
-                                    <p className="text-slate-900 dark:text-white">{cv.phone || "Not provided"}</p>
-                                </div>
-                                <div>
                                     <span className="text-sm font-medium text-slate-500 dark:text-slate-400 block">Location</span>
                                     <p className="text-slate-900 dark:text-white">{cv.user?.location || "Not provided"}</p>
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    {/* Professional Summary */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Professional Summary</h3>
-                        {cv.summary ? (
-                            <p className="whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300 leading-relaxed">
-                                {cv.summary}
-                            </p>
-                        ) : (
-                            <p className="text-slate-500 dark:text-slate-400 italic">Not provided</p>
-                        )}
-                    </div>
-
-                    {/* Skills */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Skills</h3>
-                        {skills.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                                {skills.map((skill) => (
-                                    <span
-                                        key={skill}
-                                        className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-full text-sm font-medium"
-                                    >
-                                        {skill}
-                                    </span>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-slate-500 dark:text-slate-400 italic">Not provided</p>
-                        )}
-                    </div>
-
-                    {/* Education */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Education</h3>
-                        {cv.education ? (
-                            <p className="whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300 leading-relaxed">
-                                {cv.education}
-                            </p>
-                        ) : (
-                            <p className="text-slate-500 dark:text-slate-400 italic">Not provided</p>
-                        )}
-                    </div>
-
-                    {/* Work Experience */}
-                    <div>
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Work Experience</h3>
-                        {cv.experience ? (
-                            <p className="whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300 leading-relaxed">
-                                {cv.experience}
-                            </p>
-                        ) : (
-                            <p className="text-slate-500 dark:text-slate-400 italic">Not provided</p>
-                        )}
                     </div>
 
                     {/* Position Attributes */}

@@ -1,3 +1,4 @@
+// server/src/controllers/userAttribute.controller.js
 const { PrismaClient, Prisma } = require("@prisma/client");
 
 const prisma = new PrismaClient();
@@ -33,6 +34,18 @@ const isValidDateOnly = (value) => {
 };
 
 const normalizeUserAttributeValue = (type, value) => {
+    // STRING newline validation must happen before empty/null/trim checks
+    if (
+        type === "STRING" &&
+        typeof value === "string" &&
+        (value.includes("\n") || value.includes("\r"))
+    ) {
+        return {
+            valid: false,
+            value: null,
+        };
+    }
+
     if (value === undefined || value === null || (typeof value === "string" && value.trim() === "")) {
         return { valid: true, value: null };
     }
@@ -40,12 +53,9 @@ const normalizeUserAttributeValue = (type, value) => {
     const stringValue = String(value).trim();
 
     switch (type) {
-        case "STRING": {
-            if (stringValue.includes("\n") || stringValue.includes("\r")) {
-                return { valid: false, value: null };
-            }
+        case "STRING":
+            // Newline validation already performed above; return trimmed string
             return { valid: true, value: stringValue };
-        }
 
         case "TEXT":
             return { valid: true, value: stringValue };
@@ -158,10 +168,12 @@ const createUserAttribute = async (req, res) => {
                 userId: req.user.id,
                 attributeId: attribute.id,
                 value: normalizedValue.value,
+                version: 1,
             },
             select: {
                 id: true,
                 value: true,
+                version: true,
                 createdAt: true,
                 updatedAt: true,
                 attribute: {
@@ -211,6 +223,7 @@ const getUserAttributes = async (req, res) => {
             select: {
                 id: true,
                 value: true,
+                version: true,
                 createdAt: true,
                 updatedAt: true,
                 attribute: {
@@ -266,6 +279,7 @@ const getUserAttributeById = async (req, res) => {
             select: {
                 id: true,
                 value: true,
+                version: true,
                 createdAt: true,
                 updatedAt: true,
                 attribute: {
@@ -309,7 +323,7 @@ const updateUserAttribute = async (req, res) => {
         }
 
         const { id } = req.params;
-        const { value } = req.body;
+        const { value, expectedVersion } = req.body;
 
         if (!isNonEmptyString(id)) {
             return res.status(400).json({
@@ -322,6 +336,13 @@ const updateUserAttribute = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "No valid fields were provided for update.",
+            });
+        }
+
+        if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+            return res.status(400).json({
+                success: false,
+                message: "A valid expected version is required.",
             });
         }
 
@@ -358,16 +379,36 @@ const updateUserAttribute = async (req, res) => {
             });
         }
 
-        const updatedUserAttribute = await prisma.userAttribute.update({
+        // Atomic optimistic locking update
+        const updateResult = await prisma.userAttribute.updateMany({
             where: {
                 id: userAttribute.id,
+                userId: req.user.id,
+                version: expectedVersion,
             },
             data: {
                 value: normalizedValue.value,
+                version: {
+                    increment: 1,
+                },
+            },
+        });
+
+        if (updateResult.count === 0) {
+            return res.status(409).json({
+                success: false,
+                message: "This attribute value was changed in another session. Reload the latest value and try again.",
+            });
+        }
+
+        const updatedUserAttribute = await prisma.userAttribute.findUnique({
+            where: {
+                id: userAttribute.id,
             },
             select: {
                 id: true,
                 value: true,
+                version: true,
                 createdAt: true,
                 updatedAt: true,
                 attribute: {
@@ -380,6 +421,14 @@ const updateUserAttribute = async (req, res) => {
                 },
             },
         });
+
+        if (!updatedUserAttribute) {
+            console.error("Post-update UserAttribute load failed.");
+            return res.status(500).json({
+                success: false,
+                message: "Failed to update user attribute.",
+            });
+        }
 
         return res.status(200).json({
             success: true,

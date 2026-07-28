@@ -1,4 +1,4 @@
-const { PrismaClient } = require("@prisma/client");
+const { PrismaClient, Prisma } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
@@ -48,6 +48,20 @@ const createPositionAttribute = async (req, res) => {
                     positionId,
                     attributeId,
                 },
+                select: {
+                    id: true,
+                    positionId: true,
+                    attributeId: true,
+                    createdAt: true,
+                    attribute: {
+                        select: {
+                            id: true,
+                            name: true,
+                            category: true,
+                            type: true,
+                        },
+                    },
+                },
             });
 
         return res.status(201).json({
@@ -55,9 +69,20 @@ const createPositionAttribute = async (req, res) => {
             data: positionAttribute,
         });
     } catch (error) {
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002"
+        ) {
+            return res.status(409).json({
+                success: false,
+                message: "Attribute already attached to this position",
+            });
+        }
+
+        console.error("Failed to attach attribute to position:", error.message);
         return res.status(500).json({
             success: false,
-            message: error.message,
+            message: "Failed to attach attribute to position.",
         });
     }
 };
@@ -80,9 +105,10 @@ const getPositionAttributes = async (req, res) => {
             data: positionAttributes,
         });
     } catch (error) {
+        console.error("Failed to load position attributes:", error.message);
         return res.status(500).json({
             success: false,
-            message: error.message,
+            message: "Failed to load position attributes.",
         });
     }
 };
@@ -112,9 +138,10 @@ const getPositionAttributeById = async (req, res) => {
             data: positionAttribute,
         });
     } catch (error) {
+        console.error("Failed to load position attribute details:", error.message);
         return res.status(500).json({
             success: false,
-            message: error.message,
+            message: "Failed to load position attribute details.",
         });
     }
 };
@@ -146,9 +173,10 @@ const deletePositionAttribute = async (req, res) => {
             message: "Position attribute deleted successfully",
         });
     } catch (error) {
+        console.error("Failed to remove attribute from position:", error.message);
         return res.status(500).json({
             success: false,
-            message: error.message,
+            message: "Failed to remove attribute from position.",
         });
     }
 };
