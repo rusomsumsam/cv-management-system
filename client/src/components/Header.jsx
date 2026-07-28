@@ -83,7 +83,7 @@ const Header = ({
 
     const translations = {
         en: {
-            dashboard: "Dashboard",
+            dashboard: "CVMS",
             searchPlaceholder: "Search positions, CVs, discussions...",
             searchTooShort: "Enter at least 2 characters.",
             searchTooLong: "Search query cannot exceed 100 characters.",
@@ -95,7 +95,7 @@ const Header = ({
             switchToLight: "Switch to light theme",
         },
         bn: {
-            dashboard: "ড্যাশবোর্ড",
+            dashboard: "CVMS",
             searchPlaceholder: "পজিশন, সিভি ও আলোচনা খুঁজুন...",
             searchTooShort: "কমপক্ষে ২টি অক্ষর লিখুন।",
             searchTooLong: "সার্চ সর্বোচ্চ ১০০ অক্ষরের হতে পারে।",

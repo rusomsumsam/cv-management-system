@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Moon, Sun, Search, Languages } from 'lucide-react';
+import {
+    Moon,
+    Sun,
+    Search,
+    Languages,
+    Menu,
+    X,
+} from 'lucide-react';
 import useAuth from '../hooks/useAuth';
+import logo from "../assets/img/logo.png";
 
 const Navbar = () => {
     const { user, loading, logout, isAuthenticated } = useAuth();
@@ -116,12 +124,14 @@ const Navbar = () => {
             <div className="w-full max-w-[1200px] mx-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] px-6 py-3 flex items-center justify-between">
                 {/* Left: Logo */}
                 <Link to="/" className="flex items-center gap-2.5">
-                    <div className="bg-[#2563eb] text-white rounded-md p-1.5 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                        </svg>
-                    </div>
-                    <span className="text-[17px] font-semibold text-slate-900 dark:text-white tracking-tight">Resumate</span>
+                    <img
+                        src={logo}
+                        alt="CV Management Logo"
+                        className="h-8 w-8 shrink-0 object-contain"
+                    />
+                    <span className="text-[17px] font-semibold text-slate-900 dark:text-white tracking-tight">
+                        CV Management
+                    </span>
                 </Link>
 
                 {/* Center: Navigation Links (Desktop) */}
@@ -161,12 +171,18 @@ const Navbar = () => {
                     <button
                         type="button"
                         onClick={toggleLanguage}
-                        className="p-1.5 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                        className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-slate-600 transition-colors hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-900"
                         aria-label={t.language}
                         title={t.language}
                     >
-                        <Languages className="w-4 h-4" aria-hidden="true" />
-                        <span className="text-xs font-medium ml-0.5">{language === 'en' ? 'EN' : 'বাংলা'}</span>
+                        <Languages
+                            className="h-4 w-4 shrink-0"
+                            aria-hidden="true"
+                        />
+
+                        <span className="text-xs font-medium leading-none">
+                            {language === "en" ? "EN" : "বাংলা"}
+                        </span>
                     </button>
 
                     <div className="flex items-center gap-3 ml-2">
@@ -225,13 +241,15 @@ const Navbar = () => {
                     aria-controls="public-mobile-menu"
                 >
                     {isMenuOpen ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600 dark:text-slate-300">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        <X
+                            className="h-6 w-6 text-slate-600 dark:text-slate-300"
+                            aria-hidden="true"
+                        />
                     ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-600 dark:text-slate-300">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-                        </svg>
+                        <Menu
+                            className="h-6 w-6 text-slate-600 dark:text-slate-300"
+                            aria-hidden="true"
+                        />
                     )}
                 </button>
             </div>

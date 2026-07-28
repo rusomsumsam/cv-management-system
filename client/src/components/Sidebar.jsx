@@ -11,6 +11,8 @@ import {
     Users,
 } from "lucide-react";
 
+import logo from "../assets/img/logo.png";
+
 const Sidebar = ({
     user,
     isOpen = false,
@@ -202,9 +204,11 @@ const Sidebar = ({
                         onClick={handleLinkClick}
                         className="flex items-center gap-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">
-                            CV
-                        </div>
+                        <img
+                            src={logo}
+                            alt="CV Management Logo"
+                            className="h-8 w-8 object-contain"
+                        />
 
                         <div>
                             <div className="text-sm font-bold leading-tight text-slate-900 dark:text-white">
