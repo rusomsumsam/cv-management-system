@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 import useAuth from '../hooks/useAuth';
+import logo from "../assets/img/logo.png";
 
 const OAUTH_ERROR_MESSAGES = {
     oauth_cancelled: 'Social sign-in was cancelled.',
@@ -154,21 +155,19 @@ const Login = () => {
                 {/* LEFT SECTION - Hidden on mobile/tablet, visible on lg and up */}
                 <div className="hidden sm:flex lg:w-1/2 p-10 flex-col bg-white dark:bg-slate-900 border-r border-slate-100 dark:border-slate-700">
                     {/* Logo */}
-                    <div className="flex items-center gap-2 mb-8">
-                        <div className="bg-blue-600 text-white rounded p-1">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                strokeWidth={2.5}
-                                stroke="currentColor"
-                                className="w-5 h-5"
-                            >
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5M10.5 21v-7.5M3 13.5h18M4.5 13.5V6a2.25 2.25 0 012.25-2.25h10.5A2.25 2.25 0 0119.5 6v7.5" />
-                            </svg>
-                        </div>
-                        <span className="text-xl font-bold text-slate-800 dark:text-white">Resumate</span>
+                    <div className="flex items-center gap-2.5 mb-8">
+                        <Link to="/" className="flex items-center gap-2.5">
+                            <img
+                                src={logo}
+                                alt="CV Management Logo"
+                                className="h-8 w-8 shrink-0 object-contain"
+                            />
+                            <span className="text-[17px] font-semibold text-slate-900 dark:text-white tracking-tight">
+                                CV Management
+                            </span>
+                        </Link>
                     </div>
+
 
                     {/* Headline & Description */}
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">
