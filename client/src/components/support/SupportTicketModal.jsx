@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, LifeBuoy, X } from "lucide-react";
+import {
+    AlertCircle,
+    CheckCircle2,
+    LifeBuoy,
+    LoaderCircle,
+    X,
+} from "lucide-react";
+import api from "../../api/axios";
 
 const PRIORITY_OPTIONS = ["High", "Average", "Low"];
 
@@ -11,13 +18,20 @@ const SupportTicketModal = ({
     const [summary, setSummary] = useState("");
     const [priority, setPriority] = useState("Average");
     const [error, setError] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
+    const [submitting, setSubmitting] = useState(false);
 
     const handleClose = useCallback(() => {
+        if (submitting) {
+            return;
+        }
+
         setSummary("");
         setPriority("Average");
         setError("");
+        setSuccessMessage("");
         onClose();
-    }, [onClose]);
+    }, [onClose, submitting]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -41,11 +55,19 @@ const SupportTicketModal = ({
         return null;
     }
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async (event) => {
         event.preventDefault();
-        setError("");
 
-        const normalizedSummary = summary.trim().replace(/\s+/g, " ");
+        if (submitting) {
+            return;
+        }
+
+        setError("");
+        setSuccessMessage("");
+
+        const normalizedSummary = summary
+            .trim()
+            .replace(/\s+/g, " ");
 
         if (!normalizedSummary) {
             setError("Support ticket summary is required.");
@@ -71,11 +93,38 @@ const SupportTicketModal = ({
             return;
         }
 
-        console.log("Support ticket frontend payload:", {
-            summary: normalizedSummary,
-            priority,
-            link: currentPageUrl,
-        });
+        if (
+            typeof currentPageUrl !== "string" ||
+            !currentPageUrl.trim()
+        ) {
+            setError("The current page link is unavailable.");
+            return;
+        }
+
+        setSubmitting(true);
+
+        try {
+            const response = await api.post("/support-tickets", {
+                summary: normalizedSummary,
+                priority,
+                link: currentPageUrl.trim(),
+            });
+
+            setSuccessMessage(
+                response.data?.message ||
+                "Support ticket created successfully."
+            );
+
+            setSummary("");
+            setPriority("Average");
+        } catch (requestError) {
+            setError(
+                requestError.response?.data?.message ||
+                "Failed to create support ticket. Please try again."
+            );
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const handleBackdropClick = (event) => {
@@ -95,6 +144,7 @@ const SupportTicketModal = ({
                 aria-modal="true"
                 aria-labelledby="support-ticket-title"
                 aria-describedby="support-ticket-description"
+                aria-busy={submitting}
                 className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
             >
                 <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 dark:border-slate-700">
@@ -125,8 +175,9 @@ const SupportTicketModal = ({
 
                     <button
                         type="button"
-                        onClick={onClose}
-                        className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                        onClick={handleClose}
+                        disabled={submitting}
+                        className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                         aria-label="Close support ticket form"
                         title="Close"
                     >
@@ -140,7 +191,13 @@ const SupportTicketModal = ({
                 <form
                     onSubmit={handleSubmit}
                     className="space-y-5 p-5"
-                    aria-describedby={error ? "support-ticket-error" : undefined}
+                    aria-describedby={
+                        error
+                            ? "support-ticket-error"
+                            : successMessage
+                                ? "support-ticket-success"
+                                : undefined
+                    }
                 >
                     {error && (
                         <div
@@ -154,6 +211,21 @@ const SupportTicketModal = ({
                             />
 
                             <span>{error}</span>
+                        </div>
+                    )}
+
+                    {successMessage && (
+                        <div
+                            id="support-ticket-success"
+                            role="status"
+                            className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300"
+                        >
+                            <CheckCircle2
+                                className="mt-0.5 h-4 w-4 shrink-0"
+                                aria-hidden="true"
+                            />
+
+                            <span>{successMessage}</span>
                         </div>
                     )}
 
@@ -174,11 +246,16 @@ const SupportTicketModal = ({
                                 if (error) {
                                     setError("");
                                 }
+
+                                if (successMessage) {
+                                    setSuccessMessage("");
+                                }
                             }}
                             rows={5}
                             maxLength={500}
                             placeholder="Describe the problem you encountered..."
-                            className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+                            disabled={submitting}
+                            className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                             required
                         />
 
@@ -205,8 +282,13 @@ const SupportTicketModal = ({
                                 if (error) {
                                     setError("");
                                 }
+
+                                if (successMessage) {
+                                    setSuccessMessage("");
+                                }
                             }}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                            disabled={submitting}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                         >
                             {PRIORITY_OPTIONS.map((option) => (
                                 <option
@@ -225,24 +307,36 @@ const SupportTicketModal = ({
                         </p>
 
                         <p className="break-all rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-400">
-                            {currentPageUrl || "Current page URL is unavailable."}
+                            {currentPageUrl ||
+                                "Current page URL is unavailable."}
                         </p>
                     </div>
 
                     <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end dark:border-slate-700">
                         <button
                             type="button"
-                            onClick={onClose}
-                            className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                            onClick={handleClose}
+                            disabled={submitting}
+                            className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
                         >
                             Cancel
                         </button>
 
                         <button
                             type="submit"
-                            className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                            disabled={submitting}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-slate-900"
                         >
-                            Continue
+                            {submitting && (
+                                <LoaderCircle
+                                    className="h-4 w-4 animate-spin"
+                                    aria-hidden="true"
+                                />
+                            )}
+
+                            {submitting
+                                ? "Creating Ticket..."
+                                : "Continue"}
                         </button>
                     </div>
                 </form>
