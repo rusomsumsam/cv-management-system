@@ -1,4 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
+const {
+    uploadSupportTicketToDropbox,
+} = require("../services/dropboxStorage.service");
 
 const prisma = new PrismaClient();
 
@@ -33,7 +36,8 @@ const normalizePriority = (value) => {
     const normalizedValue = value.trim().toLowerCase();
 
     const matchedPriority = PRIORITY_OPTIONS.find(
-        (priority) => priority.toLowerCase() === normalizedValue
+        (priority) =>
+            priority.toLowerCase() === normalizedValue
     );
 
     return matchedPriority || "";
@@ -50,7 +54,10 @@ const normalizeOptionalId = (value) => {
 };
 
 const normalizePageLink = (value) => {
-    if (typeof value !== "string" || !value.trim()) {
+    if (
+        typeof value !== "string" ||
+        !value.trim()
+    ) {
         return null;
     }
 
@@ -95,21 +102,30 @@ const createSupportTicket = async (req, res) => {
         if (!SUPPORTED_ROLES.includes(role)) {
             return res.status(403).json({
                 success: false,
-                message: "You are not authorized to create a support ticket.",
+                message:
+                    "You are not authorized to create a support ticket.",
             });
         }
 
         const body = getRequestBody(req);
 
-        const normalizedSummary = normalizeSummary(body.summary);
-        const normalizedPriority = normalizePriority(body.priority);
-        const normalizedLink = normalizePageLink(body.link);
-        const normalizedPositionId = normalizeOptionalId(body.positionId);
+        const normalizedSummary =
+            normalizeSummary(body.summary);
+
+        const normalizedPriority =
+            normalizePriority(body.priority);
+
+        const normalizedLink =
+            normalizePageLink(body.link);
+
+        const normalizedPositionId =
+            normalizeOptionalId(body.positionId);
 
         if (!normalizedSummary) {
             return res.status(400).json({
                 success: false,
-                message: "Support ticket summary is required.",
+                message:
+                    "Support ticket summary is required.",
             });
         }
 
@@ -132,14 +148,16 @@ const createSupportTicket = async (req, res) => {
         if (!normalizedPriority) {
             return res.status(400).json({
                 success: false,
-                message: "Priority must be High, Average, or Low.",
+                message:
+                    "Priority must be High, Average, or Low.",
             });
         }
 
         if (!normalizedLink) {
             return res.status(400).json({
                 success: false,
-                message: "A valid reported page link is required.",
+                message:
+                    "A valid reported page link is required.",
             });
         }
 
@@ -160,7 +178,8 @@ const createSupportTicket = async (req, res) => {
         if (!reporter || reporter.isBlocked) {
             return res.status(401).json({
                 success: false,
-                message: "Authentication is no longer valid.",
+                message:
+                    "Authentication is no longer valid.",
             });
         }
 
@@ -172,7 +191,8 @@ const createSupportTicket = async (req, res) => {
         if (!SUPPORTED_ROLES.includes(reporterRole)) {
             return res.status(403).json({
                 success: false,
-                message: "You are not authorized to create a support ticket.",
+                message:
+                    "You are not authorized to create a support ticket.",
             });
         }
 
@@ -197,25 +217,29 @@ const createSupportTicket = async (req, res) => {
             }
         }
 
-        const administrators = await prisma.user.findMany({
-            where: {
-                role: "ADMIN",
-                isBlocked: false,
-            },
-            select: {
-                email: true,
-            },
-            orderBy: {
-                email: "asc",
-            },
-        });
+        const administrators =
+            await prisma.user.findMany({
+                where: {
+                    role: "ADMIN",
+                    isBlocked: false,
+                },
+                select: {
+                    email: true,
+                },
+                orderBy: {
+                    email: "asc",
+                },
+            });
 
         const adminEmails = [
             ...new Set(
                 administrators
                     .map((administrator) =>
-                        typeof administrator.email === "string"
-                            ? administrator.email.trim().toLowerCase()
+                        typeof administrator.email ===
+                            "string"
+                            ? administrator.email
+                                .trim()
+                                .toLowerCase()
                             : ""
                     )
                     .filter(Boolean)
@@ -241,8 +265,14 @@ const createSupportTicket = async (req, res) => {
             summary: normalizedSummary,
             reportedBy: {
                 id: reporter.id,
-                name: reporterName || reporter.email.trim().toLowerCase(),
-                email: reporter.email.trim().toLowerCase(),
+                name:
+                    reporterName ||
+                    reporter.email
+                        .trim()
+                        .toLowerCase(),
+                email: reporter.email
+                    .trim()
+                    .toLowerCase(),
                 role: reporterRole,
             },
             position: position
@@ -257,17 +287,28 @@ const createSupportTicket = async (req, res) => {
             createdAt: new Date().toISOString(),
         };
 
+        const uploadedFile =
+            await uploadSupportTicketToDropbox(ticket);
+
         return res.status(201).json({
             success: true,
-            message: "Support ticket payload created successfully.",
-            data: ticket,
+            message:
+                "Support ticket created and uploaded successfully.",
+            data: {
+                ticket,
+                uploadedFile,
+            },
         });
     } catch (error) {
-        console.error("Support ticket create error:", error.message);
+        console.error(
+            "Support ticket create error:",
+            error.message
+        );
 
         return res.status(500).json({
             success: false,
-            message: "Failed to create support ticket. Please try again.",
+            message:
+                "Failed to create support ticket. Please try again.",
         });
     }
 };
