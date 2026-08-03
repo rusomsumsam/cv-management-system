@@ -11,8 +11,11 @@ import {
     AlertCircle,
     RefreshCw,
     UserRound,
+    Building2,
+    CheckCircle2,
 } from "lucide-react";
 import api from "../../../api/axios";
+import SalesforceProfileModal from "../../../components/salesforce/SalesforceProfileModal";
 
 const Profile = () => {
     const [profile, setProfile] = useState(null);
@@ -20,6 +23,10 @@ const Profile = () => {
     const [error, setError] = useState("");
     const [retryCounter, setRetryCounter] = useState(0);
     const [profileImageError, setProfileImageError] = useState(false);
+    const [isSalesforceModalOpen, setIsSalesforceModalOpen] =
+        useState(false);
+    const [salesforceSuccess, setSalesforceSuccess] =
+        useState("");
 
     useEffect(() => {
         let cancelled = false;
@@ -68,6 +75,22 @@ const Profile = () => {
         setLoading(true);
         setError("");
         setRetryCounter((previous) => previous + 1);
+    };
+
+    const handleOpenSalesforceModal = () => {
+        setSalesforceSuccess("");
+        setIsSalesforceModalOpen(true);
+    };
+
+    const handleCloseSalesforceModal = () => {
+        setIsSalesforceModalOpen(false);
+    };
+
+    const handleSalesforceSuccess = (result) => {
+        setSalesforceSuccess(
+            result?.message ||
+            "Profile added to Salesforce successfully."
+        );
     };
 
     const formatDate = (dateString) => {
@@ -236,13 +259,43 @@ const Profile = () => {
                         Manage your personal information, attributes, projects, and CVs.
                     </p>
                 </div>
-                <Link
-                    to="/profile/edit"
-                    className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900"
-                >
-                    Edit Profile
-                </Link>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                    <button
+                        type="button"
+                        onClick={handleOpenSalesforceModal}
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-blue-500 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30 dark:focus:ring-offset-slate-900"
+                    >
+                        <Building2
+                            className="h-4 w-4"
+                            aria-hidden="true"
+                        />
+                        Add to Salesforce
+                    </button>
+
+                    <Link
+                        to="/profile/edit"
+                        className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900"
+                    >
+                        Edit Profile
+                    </Link>
+                </div>
             </div>
+
+            {salesforceSuccess && (
+                <div
+                    className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-900/20"
+                    role="status"
+                >
+                    <CheckCircle2
+                        className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                        aria-hidden="true"
+                    />
+
+                    <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                        {salesforceSuccess}
+                    </p>
+                </div>
+            )}
 
             {/* SECTION 1: ME */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
@@ -550,6 +603,15 @@ const Profile = () => {
                     </div>
                 )}
             </div>
+
+            {isSalesforceModalOpen && (
+                <SalesforceProfileModal
+                    isOpen={isSalesforceModalOpen}
+                    profile={profile}
+                    onClose={handleCloseSalesforceModal}
+                    onSuccess={handleSalesforceSuccess}
+                />
+            )}
         </div>
     );
 };

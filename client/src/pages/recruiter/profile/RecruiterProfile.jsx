@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "../../../api/axios";
 import useAuth from "../../../hooks/useAuth";
+import SalesforceProfileModal from "../../../components/salesforce/SalesforceProfileModal";
 import {
     UserRound,
     Mail,
@@ -14,6 +15,7 @@ import {
     Image as ImageIcon,
     AlertCircle,
     CheckCircle2,
+    Building2,
 } from "lucide-react";
 
 const isValidHttpUrl = (value) => {
@@ -44,6 +46,8 @@ const RecruiterProfile = () => {
     const [imagePreviewError, setImagePreviewError] = useState(false);
     const [savedImageError, setSavedImageError] = useState(false);
     const [retryCounter, setRetryCounter] = useState(0);
+    const [isSalesforceModalOpen, setIsSalesforceModalOpen] =
+        useState(false);
 
     const getFullName = () => {
         const firstName = profile?.firstName;
@@ -160,6 +164,23 @@ const RecruiterProfile = () => {
         setLoading(true);
         setError("");
         setRetryCounter((previous) => previous + 1);
+    };
+
+    const handleOpenSalesforceModal = () => {
+        setError("");
+        setSuccessMessage("");
+        setIsSalesforceModalOpen(true);
+    };
+
+    const handleCloseSalesforceModal = () => {
+        setIsSalesforceModalOpen(false);
+    };
+
+    const handleSalesforceSuccess = (result) => {
+        setSuccessMessage(
+            result?.message ||
+            "Profile added to Salesforce successfully."
+        );
     };
 
     const handleChange = (e) => {
@@ -394,14 +415,31 @@ const RecruiterProfile = () => {
                     </p>
                 </div>
                 {!isEditing && (
-                    <button
-                        type="button"
-                        onClick={handleEdit}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-                    >
-                        <Pencil className="h-4 w-4" aria-hidden="true" />
-                        Edit Profile
-                    </button>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                        <button
+                            type="button"
+                            onClick={handleOpenSalesforceModal}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-blue-500 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-blue-950/30 dark:focus:ring-offset-slate-900"
+                        >
+                            <Building2
+                                className="h-4 w-4"
+                                aria-hidden="true"
+                            />
+                            Add to Salesforce
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleEdit}
+                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                        >
+                            <Pencil
+                                className="h-4 w-4"
+                                aria-hidden="true"
+                            />
+                            Edit Profile
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -773,6 +811,15 @@ const RecruiterProfile = () => {
                         </div>
                     </dl>
                 </div>
+            )}
+
+            {isSalesforceModalOpen && (
+                <SalesforceProfileModal
+                    isOpen={isSalesforceModalOpen}
+                    profile={profile}
+                    onClose={handleCloseSalesforceModal}
+                    onSuccess={handleSalesforceSuccess}
+                />
             )}
         </div>
     );
