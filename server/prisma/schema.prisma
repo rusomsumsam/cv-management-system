@@ -29,13 +29,14 @@ model User {
   role         Role    @default(CANDIDATE)
   isBlocked    Boolean @default(false)
 
-  projects       Project[]
-  positions      Position[]
-  userAttributes UserAttribute[]
-  cvs            CV[]
-  discussions    Discussion[]
-  likes          Like[]
-  oauthAccounts  OAuthAccount[]
+  projects                 Project[]
+  positions                Position[]
+  userAttributes           UserAttribute[]
+  cvs                      CV[]
+  discussions              Discussion[]
+  likes                    Like[]
+  oauthAccounts            OAuthAccount[]
+  createdPositionApiTokens PositionApiToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -206,9 +207,27 @@ model Position {
   positionTags       PositionTag[]
   cvs                CV[]
   discussions        Discussion[]
+  apiToken           PositionApiToken?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model PositionApiToken {
+  id String @id @default(cuid())
+
+  tokenHash String @unique
+
+  positionId String   @unique
+  position   Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
 }
 
 model UserAttribute {

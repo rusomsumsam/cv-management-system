@@ -13,8 +13,10 @@ import {
     RefreshCw,
     BriefcaseBusiness,
     Copy,
+    KeyRound,
 } from "lucide-react";
 import api from "../../../api/axios";
+import PositionApiTokenModal from "../../../components/positions/PositionApiTokenModal";
 
 const RecruiterPositions = () => {
     const navigate = useNavigate();
@@ -33,6 +35,12 @@ const RecruiterPositions = () => {
     const [duplicating, setDuplicating] = useState(false);
     const [duplicateError, setDuplicateError] = useState("");
     const [duplicateMessage, setDuplicateMessage] = useState("");
+
+    // API Token state
+    const [generatingApiToken, setGeneratingApiToken] = useState(false);
+    const [apiTokenError, setApiTokenError] = useState("");
+    const [generatedApiToken, setGeneratedApiToken] = useState("");
+    const [tokenPositionTitle, setTokenPositionTitle] = useState("");
 
     useEffect(() => {
         let cancelled = false;
@@ -70,6 +78,9 @@ const RecruiterPositions = () => {
         setError("");
         setDuplicateError("");
         setDuplicateMessage("");
+        setApiTokenError("");
+        setGeneratedApiToken("");
+        setTokenPositionTitle("");
         setRetryCounter((previous) => previous + 1);
     };
 
@@ -80,23 +91,41 @@ const RecruiterPositions = () => {
         setDeleteError("");
         setDuplicateError("");
         setDuplicateMessage("");
+        setApiTokenError("");
+        setGeneratedApiToken("");
+        setTokenPositionTitle("");
     };
 
     const selectedPosition =
         positions.find((position) => position.id === selectedPositionId) || null;
 
     const handleEditSelected = () => {
-        if (!selectedPosition || duplicating || deleting) return;
+        if (
+            !selectedPosition ||
+            duplicating ||
+            deleting ||
+            generatingApiToken
+        ) {
+            return;
+        }
         setDuplicateError("");
         setDuplicateMessage("");
         navigate(`/positions/edit/${selectedPosition.id}`);
     };
 
     const handleOpenDeleteDialog = () => {
-        if (!selectedPosition || duplicating || deleting) return;
+        if (
+            !selectedPosition ||
+            duplicating ||
+            deleting ||
+            generatingApiToken
+        ) {
+            return;
+        }
         setDeleteError("");
         setDuplicateError("");
         setDuplicateMessage("");
+        setApiTokenError("");
         setIsDeleteDialogOpen(true);
     };
 
@@ -107,7 +136,14 @@ const RecruiterPositions = () => {
     };
 
     const handleDeleteSelected = async () => {
-        if (!selectedPosition || deleting || duplicating) return;
+        if (
+            !selectedPosition ||
+            deleting ||
+            duplicating ||
+            generatingApiToken
+        ) {
+            return;
+        }
 
         try {
             setDeleting(true);
@@ -135,7 +171,14 @@ const RecruiterPositions = () => {
     };
 
     const handleDuplicateSelected = async () => {
-        if (!selectedPosition || duplicating || deleting) return;
+        if (
+            !selectedPosition ||
+            duplicating ||
+            deleting ||
+            generatingApiToken
+        ) {
+            return;
+        }
 
         try {
             setDuplicating(true);
@@ -166,6 +209,91 @@ const RecruiterPositions = () => {
         } finally {
             setDuplicating(false);
         }
+    };
+
+    const handleGenerateApiToken = async () => {
+        if (
+            !selectedPosition ||
+            generatingApiToken ||
+            duplicating ||
+            deleting
+        ) {
+            return;
+        }
+
+        try {
+            setGeneratingApiToken(true);
+            setApiTokenError("");
+            setDeleteError("");
+            setDuplicateError("");
+            setDuplicateMessage("");
+            setGeneratedApiToken("");
+            setTokenPositionTitle("");
+
+            const response = await api.post(
+                `/positions/${selectedPosition.id}/api-token`
+            );
+
+            const responseData = response.data?.data;
+
+            const token =
+                typeof responseData?.token === "string"
+                    ? responseData.token.trim()
+                    : "";
+
+            if (
+                !token ||
+                !token.startsWith("cvms_pos_")
+            ) {
+                throw new Error(
+                    "The API Token response is invalid."
+                );
+            }
+
+            const returnedPositionId =
+                typeof responseData?.position?.id === "string"
+                    ? responseData.position.id.trim()
+                    : "";
+
+            if (
+                !returnedPositionId ||
+                returnedPositionId !== selectedPosition.id
+            ) {
+                throw new Error(
+                    "The API Token was returned for an unexpected Position."
+                );
+            }
+
+            const returnedPositionTitle =
+                typeof responseData?.position?.title === "string" &&
+                    responseData.position.title.trim()
+                    ? responseData.position.title.trim()
+                    : selectedPosition.title || "Selected Position";
+
+            setGeneratedApiToken(token);
+            setTokenPositionTitle(returnedPositionTitle);
+        } catch (requestError) {
+            setGeneratedApiToken("");
+            setTokenPositionTitle("");
+
+            setApiTokenError(
+                requestError.response?.data?.message ||
+                requestError.message ||
+                "Failed to generate the Position API Token. Please try again."
+            );
+
+            console.error(
+                "Failed to generate Position API Token:",
+                requestError.message
+            );
+        } finally {
+            setGeneratingApiToken(false);
+        }
+    };
+
+    const handleCloseApiTokenModal = () => {
+        setGeneratedApiToken("");
+        setTokenPositionTitle("");
     };
 
     const formatDate = (dateString) => {
@@ -368,6 +496,15 @@ const RecruiterPositions = () => {
                     )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                    {/* Token Error */}
+                    {apiTokenError && (
+                        <div
+                            className="mr-2 text-xs text-red-600 dark:text-red-400"
+                            role="alert"
+                        >
+                            {apiTokenError}
+                        </div>
+                    )}
                     {/* Duplicate Feedback */}
                     {duplicateError && (
                         <div className="mr-2 text-xs text-red-600 dark:text-red-400" role="alert">
@@ -381,8 +518,42 @@ const RecruiterPositions = () => {
                     )}
                     <button
                         type="button"
+                        onClick={handleGenerateApiToken}
+                        disabled={
+                            !selectedPosition ||
+                            generatingApiToken ||
+                            duplicating ||
+                            deleting
+                        }
+                        className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 dark:bg-violet-700 dark:hover:bg-violet-600 dark:focus:ring-offset-slate-900"
+                    >
+                        {generatingApiToken ? (
+                            <>
+                                <RefreshCw
+                                    className="h-3.5 w-3.5 animate-spin"
+                                    aria-hidden="true"
+                                />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <KeyRound
+                                    className="h-3.5 w-3.5"
+                                    aria-hidden="true"
+                                />
+                                Generate API Token
+                            </>
+                        )}
+                    </button>
+                    <button
+                        type="button"
                         onClick={handleDuplicateSelected}
-                        disabled={!selectedPosition || duplicating || deleting}
+                        disabled={
+                            !selectedPosition ||
+                            duplicating ||
+                            deleting ||
+                            generatingApiToken
+                        }
                         className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:bg-emerald-700 dark:hover:bg-emerald-600 dark:focus:ring-offset-slate-900"
                     >
                         {duplicating ? (
@@ -400,7 +571,12 @@ const RecruiterPositions = () => {
                     <button
                         type="button"
                         onClick={handleEditSelected}
-                        disabled={!selectedPosition || duplicating || deleting}
+                        disabled={
+                            !selectedPosition ||
+                            duplicating ||
+                            deleting ||
+                            generatingApiToken
+                        }
                         className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-700 dark:hover:bg-blue-600 dark:focus:ring-offset-slate-900"
                     >
                         <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
@@ -409,7 +585,12 @@ const RecruiterPositions = () => {
                     <button
                         type="button"
                         onClick={handleOpenDeleteDialog}
-                        disabled={!selectedPosition || duplicating || deleting}
+                        disabled={
+                            !selectedPosition ||
+                            duplicating ||
+                            deleting ||
+                            generatingApiToken
+                        }
                         className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-700 dark:hover:bg-red-600 dark:focus:ring-offset-slate-900"
                     >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -503,7 +684,12 @@ const RecruiterPositions = () => {
                                                     aria-label={`Select position ${position.title || "Untitled Position"}`}
                                                     checked={isSelected}
                                                     onChange={() => handleSelectPosition(position.id)}
-                                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 dark:border-slate-600 dark:bg-slate-800 dark:focus:ring-blue-500"
+                                                    disabled={
+                                                        generatingApiToken ||
+                                                        duplicating ||
+                                                        deleting
+                                                    }
+                                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:focus:ring-blue-500"
                                                 />
                                             </td>
                                             <td className="px-4 py-3">
@@ -575,6 +761,15 @@ const RecruiterPositions = () => {
                 </div>
             )}
 
+            {/* API Token Modal */}
+            {generatedApiToken && (
+                <PositionApiTokenModal
+                    token={generatedApiToken}
+                    positionTitle={tokenPositionTitle}
+                    onClose={handleCloseApiTokenModal}
+                />
+            )}
+
             {/* Delete Confirmation Dialog */}
             {isDeleteDialogOpen && selectedPosition && (
                 <div
@@ -613,7 +808,11 @@ const RecruiterPositions = () => {
                             <button
                                 type="button"
                                 onClick={handleDeleteSelected}
-                                disabled={deleting || duplicating}
+                                disabled={
+                                    deleting ||
+                                    duplicating ||
+                                    generatingApiToken
+                                }
                                 className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-700 dark:hover:bg-red-600 dark:focus:ring-offset-slate-900"
                             >
                                 {deleting && (

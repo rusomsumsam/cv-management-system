@@ -16,6 +16,7 @@ const tagRoutes = require("./tag.route");
 const publicHomeRoutes = require("./publicHome.route");
 const adminUserRoutes = require("./adminUser.route");
 const supportTicketRoutes = require("./supportTicket.route");
+const integrationRoutes = require("./integration.route");
 
 router.get("/", (req, res) => {
     res.send("CV Management System API Running");
@@ -44,5 +45,6 @@ router.use("/search", searchRoutes);
 router.use("/public/home", publicHomeRoutes);
 router.use("/admin/users", adminUserRoutes);
 router.use("/support-tickets", supportTicketRoutes);
+router.use("/integrations", integrationRoutes);
 
 module.exports = router;

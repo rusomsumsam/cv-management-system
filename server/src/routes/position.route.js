@@ -11,6 +11,10 @@ const {
     deletePosition,
 } = require("../controllers/position.controller");
 
+const {
+    generatePositionApiToken,
+} = require("../controllers/positionApiToken.controller");
+
 const authMiddleware = require("../middlewares/auth.middleware");
 const authorizeRoles = require("../middlewares/authorize.middleware");
 
@@ -37,6 +41,14 @@ router.get(
     "/",
     authMiddleware,
     getPositions
+);
+
+// Position-specific API Token generation/regeneration
+router.post(
+    "/:id/api-token",
+    authMiddleware,
+    authorizeRoles("RECRUITER", "ADMIN"),
+    generatePositionApiToken
 );
 
 router.post(
